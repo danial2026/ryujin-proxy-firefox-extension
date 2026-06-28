@@ -1,0 +1,53 @@
+{
+  "name": "ryujin-proxy",
+  "version": "1.0.0",
+  "description": "Minimal SOCKS5 proxy manager for Firefox",
+  "private": true,
+  "scripts": {
+    "build": "./build.sh",
+    "build:prod": "./build.sh --prod",
+    "lint": "web-ext lint",
+    "sign": "web-ext sign",
+    "test": "echo \"No tests specified\" && exit 0"
+  },
+  "webExtConfig": {
+    "sourceDir": ".",
+    "artifactsDir": "dist",
+    "overwriteDest": true,
+    "ignoreFiles": [
+      "build.sh",
+      "package.json",
+      "package-lock.json",
+      "README.md",
+      "CHANGELOG.md",
+      "LICENSE",
+      "ryujin-pixel.png",
+      ".gitignore",
+      ".web-ext-ignore",
+      ".DS_Store",
+      "*.log",
+      "node_modules/**"
+    ]
+  },
+  "files": [
+    "manifest.json",
+    "src/",
+    "assets/",
+    "build.sh"
+  ],
+  "keywords": [
+    "firefox",
+    "extension",
+    "proxy",
+    "socks5",
+    "privacy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "web-ext": "^7.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

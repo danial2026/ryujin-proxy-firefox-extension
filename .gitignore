@@ -7,17 +7,6 @@ build/
 *.xpi
 *.zip
 
-# Project files (not for extension)
-build.sh
-package.json
-package-lock.json
-README.md
-CHANGELOG.md
-LICENSE
-
-# Source assets (not for extension)
-ryujin-pixel.png
-
 # IDE/Editor
 .vscode/
 .idea/
@@ -51,3 +40,6 @@ web-ext-artifacts/
 # Cache
 .cache/
 .eslintcache
+
+# Source assets (not for extension)
+ryujin-pixel.png
