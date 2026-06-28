@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ryujin Proxy - Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <img src="../assets/icons/icon-48.png" alt="Ryujin Proxy" width="40" height="40">
+        </div>
+        <div>
+          <h1 class="app-name">Ryujin Proxy</h1>
+          <span class="app-version" id="version">v0.0.3</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <a href="#" class="btn btn-secondary" id="viewChangelog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          Changelog
+        </a>
+        <a href="#" class="btn btn-secondary" id="viewLicense">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          License
+        </a>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="section">
+        <div class="filter-tabs">
+          <button class="filter-tab active" data-tab="whitelist">Whitelist</button>
+          <button class="filter-tab" data-tab="blacklist">Blacklist</button>
+          <button class="filter-tab" data-tab="regexWhitelist">Regex Whitelist</button>
+          <button class="filter-tab" data-tab="regexBlacklist">Regex Blacklist</button>
+        </div>
+
+        <div class="filter-panel active" id="panel-whitelist">
+          <div class="filter-header">
+            <div class="filter-description">
+              Whitelisted domains bypass the proxy entirely. Subdomains are included (example.com matches sub.example.com).
+            </div>
+            <button class="btn btn-primary btn-add" id="addWhitelistBtn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add
+            </button>
+          </div>
+          <ul class="filter-list" id="whitelistList"></ul>
+          <div class="empty-state" id="emptyWhitelist">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <p>No whitelisted domains</p>
+          </div>
+        </div>
+
+        <div class="filter-panel" id="panel-blacklist">
+          <div class="filter-header">
+            <div class="filter-description">
+              Blacklisted domains are blocked entirely. Requests to these domains will fail with a proxy error.
+            </div>
+            <button class="btn btn-primary btn-add" id="addBlacklistBtn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add
+            </button>
+          </div>
+          <ul class="filter-list" id="blacklistList"></ul>
+          <div class="empty-state" id="emptyBlacklist">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            <p>No blacklisted domains</p>
+          </div>
+        </div>
+
+        <div class="filter-panel" id="panel-regexWhitelist">
+          <div class="filter-header">
+            <div class="filter-description">
+              Regex whitelist patterns bypass the proxy. Use JavaScript regex syntax. Example: <code>^https?://.*\.example\.com.*$</code>
+            </div>
+            <button class="btn btn-primary btn-add" id="addRegexWhitelistBtn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add
+            </button>
+          </div>
+          <ul class="filter-list" id="regexWhitelistList"></ul>
+          <div class="empty-state" id="emptyRegexWhitelist">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+              <path d="M17 18a5 5 0 0 0-10 0"/>
+              <path d="M12 2a10 10 0 0 1 7.38 16.75"/>
+              <path d="M22 12h-10"/>
+            </svg>
+            <p>No regex whitelist patterns</p>
+          </div>
+        </div>
+
+        <div class="filter-panel" id="panel-regexBlacklist">
+          <div class="filter-header">
+            <div class="filter-description">
+              Regex blacklist patterns are blocked entirely. Use JavaScript regex syntax. Example: <code>^https?://.*\.ads\..*$</code>
+            </div>
+            <button class="btn btn-primary btn-add" id="addRegexBlacklistBtn">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"/>
+                <line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add
+            </button>
+          </div>
+          <ul class="filter-list" id="regexBlacklistList"></ul>
+          <div class="empty-state" id="emptyRegexBlacklist">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 8v8M12 16h.01"/>
+            </svg>
+            <p>No regex blacklist patterns</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2 class="section-title">Settings</h2>
+        <div class="settings-grid">
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-name">Data Tracking</div>
+              <div class="setting-description">Track data sent/received per proxy</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" class="toggle-input" id="dataTrackingEnabled" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-name">Notifications</div>
+              <div class="setting-description">Show connection status notifications</div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" class="toggle-input" id="showNotifications" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-name">Ping Method</div>
+              <div class="setting-description">How to test proxy connectivity</div>
+            </div>
+            <select id="pingMethod" class="form-select">
+              <option value="tcp">TCP Connect (fast)</option>
+              <option value="http">HTTP Request (thorough)</option>
+            </select>
+          </div>
+          <div class="setting-item">
+            <div class="setting-info">
+              <div class="setting-name">Ping URL</div>
+              <div class="setting-description">URL to test HTTP connectivity through proxy</div>
+            </div>
+            <input type="url" id="pingUrl" class="form-input" value="http://httpbin.org/get">
+          </div>
+        </div>
+      </section>
+
+      <section class="section danger-zone">
+        <h3 class="danger-title">Danger Zone</h3>
+        <div class="danger-actions">
+          <button class="btn btn-secondary" id="resetDataBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+              <path d="M21 12a9 9 0 1 0-9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+              <line x1="3" y1="3" x2="21" y2="21"/>
+            </svg>
+            Reset Data Usage
+          </button>
+          <button class="btn btn-secondary" id="resetAllBtn" style="border-color: var(--error); color: var(--error);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              <line x1="10" y1="11" x2="10" y2="17"/>
+              <line x1="14" y1="11" x2="14" y2="17"/>
+            </svg>
+            Reset All Settings
+          </button>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="about">
+          <div class="about-icon">
+            <img src="../assets/icons/icon-48.png" alt="Ryujin Proxy" width="48" height="48">
+          </div>
+          <div class="about-info">
+            <div class="about-name">Ryujin Proxy</div>
+            <div class="about-version">Version 0.0.3</div>
+            <div class="about-description">Minimal SOCKS5 proxy manager for Firefox</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modalTitle">Add Entry</h3>
+        <button class="btn btn-icon btn-close" id="closeModal">&times;</button>
+      </div>
+      <form class="modal-form" id="filterForm">
+        <input type="hidden" id="filterType">
+        <input type="hidden" id="filterIndex">
+        <div class="form-group">
+          <label id="filterLabel" for="filterValue">Domain</label>
+          <input type="text" id="filterValue" placeholder="example.com" required autocomplete="off">
+          <div class="form-hint" id="filterHint">Enter a domain (e.g., example.com or sub.example.com)</div>
+        </div>
+        <div class="form-group" id="regexTestGroup" style="display: none;">
+          <label for="regexTestInput">Test Pattern</label>
+          <input type="text" id="regexTestInput" placeholder="https://sub.example.com/path" autocomplete="off">
+          <div class="regex-test-result" id="regexTestResult"></div>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="changelogModal">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">Changelog</h3>
+        <button class="btn btn-icon btn-close" id="closeChangelog">&times;</button>
+      </div>
+      <div class="modal-body" id="changelogBody"></div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

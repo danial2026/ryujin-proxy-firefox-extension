@@ -1,0 +1,34 @@
+# Build and project files
+build.sh
+package.json
+package-lock.json
+README.md
+CHANGELOG.md
+LICENSE
+
+# Source assets
+ryujin-pixel.png
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.xpi
+*.zip
+
+# Firefox
+web-ext-artifacts/
+
+# Cache
+.cache/
+.eslintcache

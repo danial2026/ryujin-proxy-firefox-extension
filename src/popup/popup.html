@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SOCKS Proxy Manager</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1 class="title">SOCKS Proxy</h1>
+      <button class="btn btn-icon btn-settings" id="settingsBtn" aria-label="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 21.49a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 1 4.51 9a1.65 1.65 0 0 1-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 1 1.82.33H9a1.65 1.65 0 0 1 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 1 1 1.51 1.65 1.65 0 0 1 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 1-.33 1.82V9a1.65 1.65 0 0 1-1.51 1H15a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 1-1.51-1z"/>
+        </svg>
+      </button>
+    </header>
+
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">Proxies</h2>
+        <button class="btn btn-primary btn-add" id="addProxyBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add Proxy
+        </button>
+      </div>
+      <ul class="proxy-list" id="proxyList"></ul>
+      <div class="empty-state" id="emptyState" style="display: none;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          <path d="M21 3v7h-7"/>
+        </svg>
+        <p>No proxies configured</p>
+        <button class="btn btn-primary btn-add-first" id="addFirstProxyBtn">Add First Proxy</button>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">Active Proxy</h2>
+      </div>
+      <div class="active-proxy" id="activeProxy">
+        <div class="active-proxy-empty" id="activeProxyEmpty">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            <path d="M21 3v7h-7"/>
+          </svg>
+          <span>No active proxy</span>
+        </div>
+        <div class="active-proxy-info" id="activeProxyInfo" style="display: none;">
+          <div class="proxy-status">
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span class="status-text" id="statusText">Disconnected</span>
+          </div>
+          <div class="proxy-details">
+            <span class="proxy-name" id="activeProxyName"></span>
+            <span class="proxy-host" id="activeProxyHost"></span>
+          </div>
+          <div class="proxy-stats">
+            <div class="stat">
+              <span class="stat-value" id="statSent">0 B</span>
+              <span class="stat-label">Sent</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat">
+              <span class="stat-value" id="statReceived">0 B</span>
+              <span class="stat-label">Received</span>
+            </div>
+          </div>
+          <div class="proxy-actions-row">
+            <button class="btn btn-secondary btn-sm" id="disconnectBtn">Disconnect</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section tabs-section">
+      <div class="section-header">
+        <h2 class="section-title">Tab Routing</h2>
+        <label class="toggle">
+          <input type="checkbox" id="routeAllTabs" class="toggle-input">
+          <span class="toggle-slider"></span>
+          <span class="toggle-label">Route all tabs</span>
+        </label>
+      </div>
+      <ul class="tabs-list" id="tabsList"></ul>
+      <div class="empty-state" id="emptyTabs" style="display: none;">
+        <p>No tabs to route</p>
+      </div>
+    </section>
+
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal" id="proxyModal">
+        <div class="modal-header">
+          <h3 class="modal-title" id="modalTitle">Add Proxy</h3>
+          <button class="btn btn-icon btn-close" id="closeModal">&times;</button>
+        </div>
+        <form class="modal-form" id="proxyForm">
+          <input type="hidden" id="proxyId">
+          <div class="form-group">
+            <label for="proxyName">Name</label>
+            <input type="text" id="proxyName" placeholder="My Proxy" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="proxyHost">Host</label>
+              <input type="text" id="proxyHost" placeholder="127.0.0.1" value="127.0.0.1" required>
+            </div>
+            <div class="form-group">
+              <label for="proxyPort">Port</label>
+              <input type="number" id="proxyPort" placeholder="10808" value="10808" min="1" max="65535" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="proxyUsername">Username (optional)</label>
+              <input type="text" id="proxyUsername" placeholder="username">
+            </div>
+            <div class="form-group">
+              <label for="proxyPassword">Password (optional)</label>
+              <input type="password" id="proxyPassword" placeholder="password">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

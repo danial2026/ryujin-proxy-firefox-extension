@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.xpi
+*.zip
+
+# Project files (not for extension)
+build.sh
+package.json
+package-lock.json
+README.md
+CHANGELOG.md
+LICENSE
+
+# Source assets (not for extension)
+ryujin-pixel.png
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Firefox specific
+web-ext-artifacts/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Cache
+.cache/
+.eslintcache
