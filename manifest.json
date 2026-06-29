@@ -47,6 +47,10 @@
 "browser_specific_settings": {
     "gecko": {
       "id": "ryujin-proxy@danial.codes",
+      "data_collection_permissions": {
+        "required": ["none"],
+        "optional": []
+      },
       "strict_min_version": "91.1.0"
     }
   },
