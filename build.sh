@@ -37,10 +37,12 @@ if [[ "$PROD" == true ]]; then
     if [[ -f "$ZIP_FILE" ]]; then
         NEW_NAME="${DIST_DIR}/${NAME}-v${VERSION}.xpi"
         mv "$ZIP_FILE" "$NEW_NAME"
+        cp "$NEW_NAME" "${DIST_DIR}/${NAME}-v${VERSION}.zip"
         echo "Created: ${NEW_NAME}"
-        ls -lh "${NEW_NAME}"
+        echo "Created: ${DIST_DIR}/${NAME}-v${VERSION}.zip"
+        ls -lh "${NEW_NAME}" "${DIST_DIR}/${NAME}-v${VERSION}.zip"
     else
-        echo "Error: No XPI file generated"
+        echo "Error: No ZIP file generated"
         exit 1
     fi
 
