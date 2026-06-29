@@ -3,43 +3,45 @@
  * Handles proxy management, tab routing, data tracking, and URL filtering
  */
 
-// Storage keys for local persistence
+
 const STORAGE_KEYS = {
   PROXIES: 'ryujin_proxies',
   ACTIVE_PROXY: 'ryujin_active_proxy',
   TAB_ROUTING: 'ryujin_tab_routing',
   DATA_USAGE: 'ryujin_data_usage',
   URL_FILTERS: 'ryujin_url_filters',
-  SETTINGS: 'ryujin_settings'
+  SETTINGS: 'ryujin_settings',
+  PING_HISTORY: 'ryujin_ping_history',
+  LOGS: 'ryujin_logs'
 };
 
-// Default user settings
 const DEFAULT_SETTINGS = {
   routeAllTabs: true,
   showNotifications: true,
   dataTrackingEnabled: true,
-  pingMethod: 'tcp', // 'tcp' | 'http'
-  pingUrl: 'http://httpbin.org/get'
+  pingMethod: 'http',
+  pingUrl: 'http://www.google.com/generate_204',
+  whitelistEnabled: false,
+  blacklistEnabled: false
 };
 
-// Runtime state
 let activeProxyId = null;
 let tabRouting = new Map();
 let dataUsage = new Map();
 let urlFilters = { whitelist: [], blacklist: [], regexWhitelist: [], regexBlacklist: [] };
 let proxies = [];
 let settings = { ...DEFAULT_SETTINGS };
+let pingHistory = {};
+let logs = [];
+let _pingOverride = null;
 
-// Boot: load data and register listeners
-function init() {
-  loadAllData();
-  setupProxyListener();
-  setupTabListeners();
+async function init() {
+  await loadAllData();
+  setupProxyRequestListener();
   setupWebRequestListener();
   setupMessageListener();
 }
 
-// Load all persisted data from storage
 async function loadAllData() {
   const data = await browser.storage.local.get([
     STORAGE_KEYS.PROXIES,
@@ -47,7 +49,9 @@ async function loadAllData() {
     STORAGE_KEYS.TAB_ROUTING,
     STORAGE_KEYS.DATA_USAGE,
     STORAGE_KEYS.URL_FILTERS,
-    STORAGE_KEYS.SETTINGS
+    STORAGE_KEYS.SETTINGS,
+    STORAGE_KEYS.PING_HISTORY,
+    STORAGE_KEYS.LOGS
   ]);
 
   proxies = data[STORAGE_KEYS.PROXIES] || [];
@@ -56,21 +60,66 @@ async function loadAllData() {
   dataUsage = new Map(Object.entries(data[STORAGE_KEYS.DATA_USAGE] || {}));
   urlFilters = data[STORAGE_KEYS.URL_FILTERS] || { whitelist: [], blacklist: [], regexWhitelist: [], regexBlacklist: [] };
   settings = { ...DEFAULT_SETTINGS, ...data[STORAGE_KEYS.SETTINGS] };
-
-  if (activeProxyId) {
-    applyProxy(activeProxyId);
-  }
+  pingHistory = data[STORAGE_KEYS.PING_HISTORY] || {};
+  logs = data[STORAGE_KEYS.LOGS] || [];
+  addLog('info', 'Background service initialized');
 }
 
-// Handle messages from popup/options UI
+function setupProxyRequestListener() {
+  browser.proxy.onRequest.addListener(
+    (details) => {
+      if (!activeProxyId) return { type: 'direct' };
+
+      if (_pingOverride && _pingOverride.testUrl === details.url) {
+        return { type: 'socks', host: _pingOverride.host, port: _pingOverride.port };
+      }
+
+      if (settings.blacklistEnabled || settings.whitelistEnabled) {
+        const decision = checkUrlFilters(details.url);
+        if (settings.blacklistEnabled && decision.cancel) {
+          return { type: 'direct' };
+        }
+        if (settings.whitelistEnabled) {
+          const onWhitelist = urlFilters.regexWhitelist.some(p => { try { return new RegExp(p).test(details.url); } catch(e) {} return false; }) ||
+                              urlFilters.whitelist.some(w => details.url.includes(w));
+          if (!onWhitelist) return { type: 'direct' };
+        }
+      }
+
+      if (!settings.routeAllTabs && !tabRouting.get(details.tabId)) {
+        return { type: 'direct' };
+      }
+
+      const proxy = proxies.find(p => p.id === activeProxyId);
+      if (!proxy) return { type: 'direct' };
+
+      return {
+        type: 'socks',
+        host: proxy.host,
+        port: proxy.port,
+        ...(proxy.username && { username: proxy.username }),
+        ...(proxy.password && { password: proxy.password })
+      };
+    },
+    { urls: ['<all_urls>', 'ws://*/*', 'wss://*/*'] }
+  );
+
+  browser.proxy.onError.addListener((error) => {
+    console.error('Proxy error:', error.message);
+  });
+}
+
 function setupMessageListener() {
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     switch (message.type) {
       case 'GET_STATE':
-        sendResponse(getState());
-        break;
+        getStateWithPing().then(sendResponse);
+        return true;
       case 'ADD_PROXY':
         addProxy(message.proxy).then(sendResponse);
+        return true;
+      case 'UPDATE_PROXY':
+        updateProxy(message.proxyId, message.proxy).then(sendResponse);
         return true;
       case 'REMOVE_PROXY':
         removeProxy(message.id).then(sendResponse);
@@ -91,13 +140,19 @@ function setupMessageListener() {
         removeUrlFilter(message.filterType, message.index).then(sendResponse);
         return true;
       case 'UPDATE_SETTINGS':
-        updateSettings(message.settings).then(sendResponse);
+        {
+          const { type: _, ...settingsData } = message;
+          updateSettings(settingsData).then(sendResponse);
+        }
         return true;
       case 'UPDATE_URL_FILTERS':
         updateUrlFilters(message.urlFilters).then(sendResponse);
         return true;
       case 'RESET_DATA_USAGE':
         resetDataUsage(message.proxyId).then(sendResponse);
+        return true;
+      case 'CLEAR_LOGS':
+        clearLogs().then(sendResponse);
         return true;
       case 'GET_TABS':
         getTabs().then(sendResponse);
@@ -109,18 +164,39 @@ function setupMessageListener() {
   });
 }
 
-// Return current state for UI sync
 function getState() {
   return {
-    proxies: proxies.map(p => ({ ...p, dataUsage: dataUsage.get(p.id) || { sent: 0, received: 0 } })),
+    proxies: proxies.map(p => ({
+      ...p,
+      dataUsage: dataUsage.get(p.id) || { sent: 0, received: 0 },
+      lastPing: pingHistory[p.id] || null
+    })),
     activeProxyId,
     tabRouting: Object.fromEntries(tabRouting),
     urlFilters,
-    settings
+    settings,
+    logs
   };
 }
 
-// Add new proxy to list
+async function getStateWithPing() {
+  const data = await browser.storage.local.get([STORAGE_KEYS.PING_HISTORY]);
+  const history = data[STORAGE_KEYS.PING_HISTORY] || {};
+
+  return {
+    proxies: proxies.map(p => ({
+      ...p,
+      dataUsage: dataUsage.get(p.id) || { sent: 0, received: 0 },
+      lastPing: history[p.id] || null
+    })),
+    activeProxyId,
+    tabRouting: Object.fromEntries(tabRouting),
+    urlFilters,
+    settings,
+    logs
+  };
+}
+
 async function addProxy(proxy) {
   const newProxy = {
     id: generateId(),
@@ -133,117 +209,77 @@ async function addProxy(proxy) {
   };
   proxies.push(newProxy);
   await saveProxies();
+  addLog('success', `Added proxy [${newProxy.name}] (${newProxy.host}:${newProxy.port})`);
   return { success: true, proxy: newProxy };
 }
 
-// Remove proxy from list
 async function removeProxy(id) {
+  const proxy = proxies.find(p => p.id === id);
+  const proxyName = proxy ? proxy.name : id;
   proxies = proxies.filter(p => p.id !== id);
   dataUsage.delete(id);
   if (activeProxyId === id) {
     activeProxyId = null;
-    await clearProxy();
+    addLog('warning', `Disconnected - removed active proxy [${proxyName}]`);
   }
   await saveProxies();
   await saveDataUsage();
+  addLog('success', `Removed proxy [${proxyName}]`);
   return { success: true };
 }
 
-// Set active proxy (or disconnect if null)
 async function setActiveProxy(id) {
-  if (id === null) {
-    activeProxyId = null;
-    await clearProxy();
-  } else {
-    const proxy = proxies.find(p => p.id === id);
-    if (!proxy) return { success: false, error: 'Proxy not found' };
-    activeProxyId = id;
-    await applyProxy(id);
+  try {
+    if (id === null) {
+      const prevProxy = activeProxyId ? formatProxyName(activeProxyId) : 'none';
+      activeProxyId = null;
+      addLog('warning', `Disconnected from proxy [${prevProxy}]`);
+    } else {
+      const proxy = proxies.find(p => p.id === id);
+      if (!proxy) return { success: false, error: 'Proxy not found' };
+      activeProxyId = id;
+      addLog('success', `Connected to proxy [${proxy.name}] (${proxy.host}:${proxy.port})`);
+    }
+    await browser.storage.local.set({ [STORAGE_KEYS.ACTIVE_PROXY]: activeProxyId });
+    broadcastStateChange();
+    return { success: true };
+  } catch (e) {
+    addLog('error', `Failed to set proxy: ${e.message}`);
+    return { success: false, error: e.message };
   }
-  await browser.storage.local.set({ [STORAGE_KEYS.ACTIVE_PROXY]: activeProxyId });
-  broadcastStateChange();
-  return { success: true };
 }
 
-async function applyProxy(proxyId) {
-  const proxy = proxies.find(p => p.id === proxyId);
-  if (!proxy) return;
+async function updateProxy(proxyId, proxyData) {
+  const index = proxies.findIndex(p => p.id === proxyId);
+  if (index === -1) return { success: false, error: 'Proxy not found' };
 
-  const config = {
-    mode: 'fixed_servers',
-    rules: {
-      singleProxy: {
-        scheme: 'socks5',
-        host: proxy.host,
-        port: proxy.port
-      },
-      bypassList: ['<local>']
-    }
+  const updatedProxy = {
+    ...proxies[index],
+    name: proxyData.name,
+    host: proxyData.host,
+    port: parseInt(proxyData.port),
+    username: proxyData.username || '',
+    password: proxyData.password || ''
   };
 
-  if (proxy.username && proxy.password) {
-    config.rules.singleProxy.username = proxy.username;
-    config.rules.singleProxy.password = proxy.password;
+  proxies[index] = updatedProxy;
+  await saveProxies();
+
+  if (activeProxyId === proxyId) {
+    addLog('info', `Updated active proxy [${updatedProxy.name}]`);
+  } else {
+    addLog('info', `Updated proxy [${updatedProxy.name}]`);
   }
 
-  await browser.proxy.settings.set({ value: config, scope: 'regular' });
-}
-
-async function clearProxy() {
-  await browser.proxy.settings.clear({ scope: 'regular' });
-}
-
-function setupProxyListener() {
-  browser.proxy.onError.addListener((error) => {
-    console.error('Proxy error:', error.message);
-  });
-}
-
-function setupTabListeners() {
-  browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-    if (changeInfo.status === 'loading' && shouldRouteTab(tabId)) {
-      applyProxyToTab(tabId);
-    }
-  });
-
-  browser.tabs.onRemoved.addListener((tabId) => {
-    tabRouting.delete(tabId);
-    saveTabRouting();
-  });
-
-  browser.tabs.onActivated.addListener(({ tabId }) => {
-    if (shouldRouteTab(tabId)) {
-      applyProxyToTab(tabId);
-    }
-  });
-}
-
-function shouldRouteTab(tabId) {
-  if (!activeProxyId) return false;
-  if (settings.routeAllTabs) return true;
-  return tabRouting.get(tabId) === true;
-}
-
-async function applyProxyToTab(tabId) {
-  if (!activeProxyId) return;
-  const proxy = proxies.find(p => p.id === activeProxyId);
-  if (!proxy) return;
-
-  try {
-    await browser.tabs.update(tabId, { proxy: { host: proxy.host, port: proxy.port, scheme: 'socks5' } });
-  } catch (e) {
-    console.error('Failed to apply proxy to tab:', e);
-  }
+  broadcastStateChange();
+  return { success: true, proxy: updatedProxy };
 }
 
 async function toggleTabRouting(tabId) {
   const current = tabRouting.get(tabId) || false;
   tabRouting.set(tabId, !current);
   await saveTabRouting();
-  
-  if (!current && activeProxyId) {
-    applyProxyToTab(tabId);
-  }
+  addLog('info', `Tab routing ${!current ? 'enabled' : 'disabled'} for tab ${tabId}`);
   broadcastStateChange();
   return { success: true, routing: tabRouting.get(tabId) };
 }
@@ -251,13 +287,7 @@ async function toggleTabRouting(tabId) {
 async function setRouteAllTabs(enabled) {
   settings.routeAllTabs = enabled;
   await browser.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
-  
-  if (enabled && activeProxyId) {
-    const tabs = await browser.tabs.query({});
-    for (const tab of tabs) {
-      applyProxyToTab(tab.id);
-    }
-  }
+  addLog('info', `Route all tabs ${enabled ? 'enabled' : 'disabled'}`);
   broadcastStateChange();
   return { success: true };
 }
@@ -265,10 +295,11 @@ async function setRouteAllTabs(enabled) {
 async function addUrlFilter(filter) {
   const { type, value, isRegex } = filter;
   const key = isRegex ? (type === 'whitelist' ? 'regexWhitelist' : 'regexBlacklist') : (type === 'whitelist' ? 'whitelist' : 'blacklist');
-  
+
   if (!urlFilters[key].includes(value)) {
     urlFilters[key].push(value);
     await saveUrlFilters();
+    addLog('info', `Added ${key} filter: ${value}`);
   }
   broadcastStateChange();
   return { success: true };
@@ -276,8 +307,10 @@ async function addUrlFilter(filter) {
 
 async function removeUrlFilter(filterType, index) {
   const key = filterType === 'whitelist' ? 'whitelist' : filterType === 'blacklist' ? 'blacklist' : filterType === 'regexWhitelist' ? 'regexWhitelist' : 'regexBlacklist';
+  const value = urlFilters[key][index];
   urlFilters[key].splice(index, 1);
   await saveUrlFilters();
+  addLog('info', `Removed ${key} filter: ${value}`);
   broadcastStateChange();
   return { success: true };
 }
@@ -285,6 +318,7 @@ async function removeUrlFilter(filterType, index) {
 async function updateSettings(newSettings) {
   settings = { ...settings, ...newSettings };
   await browser.storage.local.set({ [STORAGE_KEYS.SETTINGS]: settings });
+  addLog('info', 'Settings updated');
   broadcastStateChange();
   return { success: true };
 }
@@ -320,118 +354,87 @@ async function getTabs() {
 
 async function pingProxy(proxyId, method, url) {
   const proxy = proxies.find(p => p.id === proxyId);
-  if (!proxy) return { success: false, error: 'Proxy not found' };
+  if (!proxy) {
+    addLog('error', `Ping failed - proxy not found [${proxyId}]`);
+    return { success: false, error: 'Proxy not found' };
+  }
 
-  const pingMethod = method || settings.pingMethod || 'tcp';
-  const pingUrl = url || settings.pingUrl || 'http://httpbin.org/get';
-
+  const pingMethod = method || settings.pingMethod || 'http';
+  const pingUrl = url || settings.pingUrl || 'http://www.google.com/generate_204';
   const startTime = Date.now();
-  
+
+  addLog('info', `Pinging [${proxy.name}] using ${pingMethod.toUpperCase()} method`);
+
   try {
     if (pingMethod === 'tcp') {
-      // TCP connection test - try to connect to the proxy port
-      await testTcpConnection(proxy.host, proxy.port);
+      await testTcpConnection(proxy.host, proxy.port, proxy.username, proxy.password, pingUrl);
     } else {
-      // HTTP request test through the proxy
       await testHttpConnection(proxy, pingUrl);
     }
-    
+
     const latency = Date.now() - startTime;
+    const pingData = { success: true, latency, method: pingMethod, timestamp: Date.now() };
+    await savePingHistory(proxyId, pingData);
+    addLog('success', `Ping [${proxy.name}] - ${latency}ms (${pingMethod.toUpperCase()})`);
+    broadcastStateChange();
     return { success: true, latency, method: pingMethod };
   } catch (error) {
     const latency = Date.now() - startTime;
+    const pingData = { success: false, error: error.message, latency, method: pingMethod, timestamp: Date.now() };
+    await savePingHistory(proxyId, pingData);
+    addLog('error', `Ping [${proxy.name}] failed - ${error.message}`);
+    broadcastStateChange();
     return { success: false, error: error.message, latency, method: pingMethod };
   }
 }
 
-async function testTcpConnection(host, port) {
-  // Use a simple fetch to a test endpoint through the proxy
-  // Since we can't do raw TCP in WebExtensions, we test via a quick HTTP request
+async function testTcpConnection(host, port, username, password, pingUrl) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
   try {
-    // Try to connect via the proxy by making a request to a simple endpoint
-    // We'll use the browser's proxy API temporarily
-    const config = {
-      mode: 'fixed_servers',
-      rules: {
-        singleProxy: {
-          scheme: 'socks5',
-          host: host,
-          port: port
-        },
-        bypassList: []
-      }
-    };
-    
-    await browser.proxy.settings.set({ value: config, scope: 'regular' });
-    
-    // Quick test request
-    const response = await fetch('http://httpbin.org/get', {
+    _pingOverride = { host, port, testUrl: pingUrl };
+    await new Promise(r => setTimeout(r, 200));
+    const response = await fetch(pingUrl, {
       method: 'GET',
       signal: controller.signal,
       cache: 'no-cache'
     });
-    
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
     return true;
   } finally {
+    _pingOverride = null;
     clearTimeout(timeout);
-    await browser.proxy.settings.clear({ scope: 'regular' });
   }
 }
 
 async function testHttpConnection(proxy, url) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
   try {
-    // Set up proxy temporarily
-    const config = {
-      mode: 'fixed_servers',
-      rules: {
-        singleProxy: {
-          scheme: 'socks5',
-          host: proxy.host,
-          port: proxy.port
-        },
-        bypassList: []
-      }
-    };
-    
-    if (proxy.username && proxy.password) {
-      config.rules.singleProxy.username = proxy.username;
-      config.rules.singleProxy.password = proxy.password;
-    }
-    
-    await browser.proxy.settings.set({ value: config, scope: 'regular' });
-    
+    _pingOverride = { host: proxy.host, port: proxy.port, testUrl: url };
+    await new Promise(r => setTimeout(r, 200));
     const response = await fetch(url, {
       method: 'GET',
       signal: controller.signal,
       cache: 'no-cache'
     });
-    
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    
     return true;
   } finally {
+    _pingOverride = null;
     clearTimeout(timeout);
-    await browser.proxy.settings.clear({ scope: 'regular' });
   }
 }
 
 function setupWebRequestListener() {
-  if (!settings.dataTrackingEnabled) return;
-
   browser.webRequest.onBeforeRequest.addListener(
     (details) => {
-      if (activeProxyId && shouldTrackRequest(details)) {
+      if (settings.dataTrackingEnabled && shouldTrackRequest(details)) {
         trackDataUsage(details.tabId, details.requestBody ? JSON.stringify(details.requestBody).length : 0, 'sent');
       }
-      return checkUrlFilters(details.url);
+      return { cancel: false };
     },
     { urls: ['<all_urls>'] },
     ['blocking', 'requestBody']
@@ -439,12 +442,13 @@ function setupWebRequestListener() {
 
   browser.webRequest.onHeadersReceived.addListener(
     (details) => {
-      if (activeProxyId && shouldTrackRequest(details)) {
-        const contentLength = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length')?.value;
-        if (contentLength) {
-          trackDataUsage(details.tabId, parseInt(contentLength), 'received');
+      if (settings.dataTrackingEnabled && shouldTrackRequest(details)) {
+        const header = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length');
+        if (header) {
+          trackDataUsage(details.tabId, parseInt(header.value), 'received');
         }
       }
+      return {};
     },
     { urls: ['<all_urls>'] },
     ['responseHeaders']
@@ -456,19 +460,34 @@ function shouldTrackRequest(details) {
 }
 
 function checkUrlFilters(url) {
-  for (const pattern of urlFilters.regexBlacklist) {
-    try {
-      if (new RegExp(pattern).test(url)) return { cancel: true };
-    } catch (e) {}
+  try {
+    if (settings.blacklistEnabled) {
+      for (const pattern of urlFilters.regexBlacklist) {
+        try {
+          if (new RegExp(pattern).test(url)) return { cancel: true };
+        } catch (e) {}
+      }
+      for (const pattern of urlFilters.blacklist) {
+        if (url.includes(pattern)) return { cancel: true };
+      }
+    }
+
+    if (settings.whitelistEnabled) {
+      for (const pattern of urlFilters.regexWhitelist) {
+        try {
+          if (new RegExp(pattern).test(url)) return { cancel: false };
+        } catch (e) {}
+      }
+      if (urlFilters.whitelist.length > 0 && !urlFilters.whitelist.some(w => url.includes(w))) {
+        return { cancel: true };
+      }
+    }
+
+    return { cancel: false };
+  } catch (e) {
+    console.error('checkUrlFilters error:', e, 'url:', url);
+    return { cancel: false };
   }
-  for (const pattern of urlFilters.regexWhitelist) {
-    try {
-      if (new RegExp(pattern).test(url)) return { cancel: false };
-    } catch (e) {}
-  }
-  if (urlFilters.blacklist.some(b => url.includes(b))) return { cancel: true };
-  if (urlFilters.whitelist.length > 0 && !urlFilters.whitelist.some(w => url.includes(w))) return { cancel: true };
-  return { cancel: false };
 }
 
 function trackDataUsage(tabId, bytes, direction) {
@@ -488,11 +507,23 @@ async function saveTabRouting() {
 }
 
 async function saveDataUsage() {
-  await browser.storage.local.set({ [STORAGE_KEYS.DATA_USAGE]: Object.fromEntries(dataUsage) });
+  try {
+    await browser.storage.local.set({ [STORAGE_KEYS.DATA_USAGE]: Object.fromEntries(dataUsage) });
+  } catch (e) {
+    console.error('Failed to save data usage:', e);
+  }
 }
 
 async function saveUrlFilters() {
   await browser.storage.local.set({ [STORAGE_KEYS.URL_FILTERS]: urlFilters });
+}
+
+async function savePingHistory(proxyId, pingData) {
+  const data = await browser.storage.local.get([STORAGE_KEYS.PING_HISTORY]);
+  const history = data[STORAGE_KEYS.PING_HISTORY] || {};
+  history[proxyId] = pingData;
+  await browser.storage.local.set({ [STORAGE_KEYS.PING_HISTORY]: history });
+  pingHistory[proxyId] = pingData;
 }
 
 function broadcastStateChange() {
@@ -503,4 +534,37 @@ function generateId() {
   return 'proxy_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
-init();
+async function saveLogs() {
+  try {
+    if (logs.length > 500) {
+      logs = logs.slice(logs.length - 500);
+    }
+    await browser.storage.local.set({ [STORAGE_KEYS.LOGS]: logs });
+  } catch (e) {
+    console.error('Failed to save logs:', e);
+  }
+}
+
+function addLog(level, message) {
+  const entry = { level, message, timestamp: Date.now() };
+  logs.push(entry);
+  if (logs.length > 500) {
+    logs.shift();
+  }
+  saveLogs();
+  browser.runtime.sendMessage({ type: 'LOG_ENTRY', level, message }).catch(() => {});
+}
+
+function formatProxyName(proxyId) {
+  const proxy = proxies.find(p => p.id === proxyId);
+  return proxy ? proxy.name : proxyId;
+}
+
+async function clearLogs() {
+  logs = [];
+  await browser.storage.local.set({ [STORAGE_KEYS.LOGS]: [] });
+  addLog('info', 'Logs cleared');
+  return { success: true };
+}
+
+init().catch(e => console.error('Init failed:', e));

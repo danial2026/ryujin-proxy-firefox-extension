@@ -3,16 +3,20 @@
 
   let state = {
     urlFilters: { whitelist: [], blacklist: [], regexWhitelist: [], regexBlacklist: [] },
-    settings: { 
-      routeAllTabs: true, 
-      showNotifications: true, 
+    settings: {
+      routeAllTabs: true,
+      showNotifications: true,
       dataTrackingEnabled: true,
-      pingMethod: 'tcp',
-      pingUrl: 'http://httpbin.org/get'
-    }
+      pingMethod: 'http',
+      pingUrl: 'http://www.google.com/generate_204',
+      whitelistEnabled: false,
+      blacklistEnabled: false
+    },
+    logs: [],
+    logFilter: 'all'
   };
 
-const elements = {
+  const elements = {
     whitelistList: document.getElementById('whitelistList'),
     blacklistList: document.getElementById('blacklistList'),
     regexWhitelistList: document.getElementById('regexWhitelistList'),
@@ -25,14 +29,16 @@ const elements = {
     showNotifications: document.getElementById('showNotifications'),
     pingMethod: document.getElementById('pingMethod'),
     pingUrl: document.getElementById('pingUrl'),
+    whitelistEnabled: document.getElementById('whitelistEnabled'),
+    blacklistEnabled: document.getElementById('blacklistEnabled'),
     resetDataBtn: document.getElementById('resetDataBtn'),
     resetAllBtn: document.getElementById('resetAllBtn'),
-    version: document.getElementById('version'),
     viewChangelog: document.getElementById('viewChangelog'),
     viewLicense: document.getElementById('viewLicense'),
     modalOverlay: document.getElementById('modalOverlay'),
     closeModal: document.getElementById('closeModal'),
     cancelBtn: document.getElementById('cancelBtn'),
+    modalTitle: document.getElementById('modalTitle'),
     filterForm: document.getElementById('filterForm'),
     filterType: document.getElementById('filterType'),
     filterIndex: document.getElementById('filterIndex'),
@@ -50,57 +56,31 @@ const elements = {
     addWhitelistBtn: document.getElementById('addWhitelistBtn'),
     addBlacklistBtn: document.getElementById('addBlacklistBtn'),
     addRegexWhitelistBtn: document.getElementById('addRegexWhitelistBtn'),
-    addRegexBlacklistBtn: document.getElementById('addRegexBlacklistBtn')
+    addRegexBlacklistBtn: document.getElementById('addRegexBlacklistBtn'),
+    logContainer: document.getElementById('logContainer'),
+    logList: document.getElementById('logList'),
+    emptyLogs: document.getElementById('emptyLogs'),
+    logFilterBtns: document.querySelectorAll('.log-filter-btn')
   };
 
-  const CHANGELOG = `# Changelog
+  let CHANGELOG = '';
 
-## [0.0.3] - 2026-06-28
+  async function loadChangelog() {
+    if (CHANGELOG) return CHANGELOG;
+    try {
+      const response = await fetch(browser.runtime.getURL('CHANGELOG.md'));
+      if (!response.ok) throw new Error('Failed to fetch');
+      CHANGELOG = await response.text();
+    } catch (e) {
+      console.warn('Failed to load changelog:', e);
+      CHANGELOG = '# Changelog\n\nUnable to load changelog. <a href="#" onclick="window.open(\'https://github.com/danial2026/ryujin-proxy-firefox-extension/blob/main/CHANGELOG.md\', \'_blank\')">View on GitHub</a>';
+    }
+    return CHANGELOG;
+  }
 
-### Added
-- Default proxy values: 127.0.0.1:10808 in add/edit form
-- Disconnect button to return to direct connection
-- Default ping URL (httpbin.org/get) in settings
-
-## [0.0.2] - 2026-06-28
-
-### Added
-- Proxy connection test button (ping) with TCP/HTTP methods
-- Ping method and URL configuration in settings
-
-### Fixed
-- Proxy selection now immediately switches to selected proxy (no restart needed)
-- White border for selected proxy item
-- White border on all text input fields
-- Grey selection color for text highlighting
-- Removed white line on left edge of popup
-- Added edit button to proxy list (uses same form as add)
-- Fixed URL filter updates not persisting
-- Fixed about:addons preferences icon not showing
-- Higher contrast text colors for better readability
-
-### Changed
-- All text inputs now have white borders
-- Selected proxy shows white border instead of left accent bar
-- Text selection is now grey instead of white
-
-## [0.0.1] - 2026-06-28
-
-### Added
-- Initial release of Ryujin Proxy
-- SOCKS5 proxy management (add, edit, remove)
-- Per-tab proxy routing with "route all tabs" option
-- Real-time data usage tracking per proxy (sent/received)
-- URL filtering: whitelist, blacklist, regex whitelist, regex blacklist
-- Modern minimal black & white UI with Inter font
-- Persistent settings and data storage
-- Firefox Manifest V2 compatible
-
-### Technical
-- Background service worker for proxy management
-- WebRequest API for data tracking and URL filtering
-- Proxy API for SOCKS5 configuration
-- Storage API for persistence`;
+  async function init() {
+    await loadState();
+  }
 
   async function sendMessage(type, data = {}) {
     return new Promise((resolve) => {
@@ -200,16 +180,15 @@ const elements = {
   function renderSettings() {
     elements.dataTrackingEnabled.checked = state.settings.dataTrackingEnabled;
     elements.showNotifications.checked = state.settings.showNotifications;
-    elements.pingMethod.value = state.settings.pingMethod || 'tcp';
-    elements.pingUrl.value = state.settings.pingUrl || 'http://httpbin.org/get';
+    elements.pingMethod.value = state.settings.pingMethod || 'http';
+    elements.pingUrl.value = state.settings.pingUrl || 'http://www.google.com/generate_204';
+    elements.whitelistEnabled.checked = state.settings.whitelistEnabled !== false;
+    elements.blacklistEnabled.checked = state.settings.blacklistEnabled !== false;
   }
 
-  function renderVersion() {
-    elements.version.textContent = '0.0.2';
-  }
-
-  function renderChangelog() {
-    const lines = CHANGELOG.split('\n');
+  async function renderChangelog() {
+    const changelog = await loadChangelog();
+    const lines = changelog.split('\n');
     let currentVersion = null;
     let currentDate = null;
     let changes = [];
@@ -298,7 +277,7 @@ const elements = {
     elements.filterIndex.value = index !== null ? index : '';
     elements.filterLabel.textContent = isRegex ? 'Regex Pattern' : 'Domain';
     elements.filterValue.placeholder = isRegex ? '^https?://.*\\.example\\.com.*$' : 'example.com';
-    elements.filterHint.textContent = isRegex 
+    elements.filterHint.textContent = isRegex
       ? 'Enter a valid JavaScript regex pattern'
       : 'Enter a domain (e.g., example.com or sub.example.com)';
     elements.filterValue.value = value;
@@ -435,13 +414,84 @@ const elements = {
       elements.regexTestResult.textContent = 'Invalid regex';
       elements.regexTestResult.className = 'regex-test-result no-match';
     } else if (result) {
-      elements.regexTestResult.textContent = '✓ Pattern matches';
+      elements.regexTestResult.textContent = '\u2713 Pattern matches';
       elements.regexTestResult.className = 'regex-test-result match';
     } else {
-      elements.regexTestResult.textContent = '✗ Pattern does not match';
+      elements.regexTestResult.textContent = '\u2717 Pattern does not match';
       elements.regexTestResult.className = 'regex-test-result no-match';
     }
     elements.regexTestResult.style.display = 'block';
+  }
+
+  function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + date.getMilliseconds().toString().padStart(3, '0');
+  }
+
+  function renderLogs() {
+    if (!elements.logList) return;
+
+    const filteredLogs = state.logFilter === 'all'
+      ? state.logs
+      : state.logs.filter(log => log.level === state.logFilter);
+
+    elements.logList.innerHTML = '';
+
+    if (filteredLogs.length === 0) {
+      elements.logList.style.display = 'none';
+      if (elements.emptyLogs) elements.emptyLogs.style.display = 'flex';
+      return;
+    }
+
+    elements.logList.style.display = 'block';
+    if (elements.emptyLogs) elements.emptyLogs.style.display = 'none';
+
+    [...filteredLogs].reverse().forEach(log => {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.dataset.level = log.level;
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'log-time';
+      timeSpan.textContent = formatTime(log.timestamp);
+
+      const levelSpan = document.createElement('span');
+      levelSpan.className = `log-level ${log.level}`;
+      levelSpan.textContent = log.level.toUpperCase();
+
+      const messageSpan = document.createElement('span');
+      messageSpan.className = 'log-message';
+      messageSpan.innerHTML = escapeHtml(log.message)
+        .replace(/\[([^\]]+)\]/g, '<span class="proxy-name">[$1]</span>')
+        .replace(/(https?:\/\/[^\s]+)/g, '<span class="url">$1</span>');
+
+      entry.appendChild(timeSpan);
+      entry.appendChild(levelSpan);
+      entry.appendChild(messageSpan);
+
+      elements.logList.appendChild(entry);
+    });
+  }
+
+  function filterLogs(level) {
+    state.logFilter = level;
+    elements.logFilterBtns.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.level === level);
+    });
+    renderLogs();
+  }
+
+  function addLog(level, message) {
+    const log = {
+      level,
+      message,
+      timestamp: Date.now()
+    };
+    state.logs.unshift(log);
+    if (state.logs.length > 500) {
+      state.logs = state.logs.slice(0, 500);
+    }
+    renderLogs();
   }
 
   async function loadState() {
@@ -449,11 +499,12 @@ const elements = {
     if (response) {
       state.urlFilters = response.urlFilters;
       state.settings = response.settings;
+      state.logs = response.logs || [];
       renderAllFilters();
       renderSettings();
-      renderVersion();
-      renderChangelog();
+      renderLogs();
     }
+    await renderChangelog();
   }
 
   function renderAll() {
@@ -481,18 +532,20 @@ const elements = {
   elements.showNotifications.addEventListener('change', (e) => toggleSetting('showNotifications', e.target.checked));
   elements.pingMethod.addEventListener('change', (e) => toggleSetting('pingMethod', e.target.value));
   elements.pingUrl.addEventListener('change', (e) => toggleSetting('pingUrl', e.target.value));
+  elements.whitelistEnabled.addEventListener('change', (e) => toggleSetting('whitelistEnabled', e.target.checked));
+  elements.blacklistEnabled.addEventListener('change', (e) => toggleSetting('blacklistEnabled', e.target.checked));
 
   elements.resetDataBtn.addEventListener('click', resetDataUsage);
   elements.resetAllBtn.addEventListener('click', resetAllSettings);
 
   elements.viewChangelog.addEventListener('click', (e) => {
     e.preventDefault();
-    elements.changelogModal.classList.add('active');
+    window.open(browser.runtime.getURL('src/options/changelog.html'), '_blank', 'noopener,noreferrer');
   });
 
   elements.viewLicense.addEventListener('click', (e) => {
     e.preventDefault();
-    alert('MIT License\n\nCopyright (c) 2026\n\nPermission is hereby granted...');
+    window.open('https://github.com/danial2026/ryujin-proxy-firefox-extension/blob/main/LICENSE', '_blank', 'noopener,noreferrer');
   });
 
   elements.closeChangelog.addEventListener('click', () => {
@@ -508,6 +561,25 @@ const elements = {
   elements.regexTestInput.addEventListener('input', testRegexPattern);
   elements.filterValue.addEventListener('input', testRegexPattern);
 
+  if (elements.logFilterBtns) {
+    elements.logFilterBtns.forEach(btn => {
+      btn.addEventListener('click', () => filterLogs(btn.dataset.level));
+    });
+  }
+
+  // Clear logs button
+  const clearLogsBtn = document.getElementById('clearLogsBtn');
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', async () => {
+      const response = await sendMessage('CLEAR_LOGS');
+      if (response.success) {
+        state.logs = [];
+        renderLogs();
+        showNotification('Logs cleared');
+      }
+    });
+  }
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       closeFilterModal();
@@ -521,7 +593,10 @@ const elements = {
       state.settings = message.state.settings;
       renderAll();
     }
+    if (message.type === 'LOG_ENTRY') {
+      addLog(message.level, message.message);
+    }
   });
 
-  loadState();
+  init().catch(e => console.error('Options init failed:', e));
 })();

@@ -29,6 +29,7 @@ if [[ "$PROD" == true ]]; then
     cp manifest.json "${TMP_BUILD}/"
     cp -r src "${TMP_BUILD}/"
     cp -r assets "${TMP_BUILD}/"
+    cp CHANGELOG.md "${TMP_BUILD}/"
 
     npx web-ext build --source-dir="${TMP_BUILD}" --artifacts-dir="${BUILD_DIR}" --overwrite-dest
 

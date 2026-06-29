@@ -109,11 +109,11 @@
           <div class="form-row">
             <div class="form-group">
               <label for="proxyHost">Host</label>
-              <input type="text" id="proxyHost" placeholder="127.0.0.1" value="127.0.0.1" required>
+              <input type="text" id="proxyHost" placeholder="127.0.0.1" required>
             </div>
             <div class="form-group">
               <label for="proxyPort">Port</label>
-              <input type="number" id="proxyPort" placeholder="10808" value="10808" min="1" max="65535" required>
+              <input type="number" id="proxyPort" placeholder="10808" min="1" max="65535" required>
             </div>
           </div>
           <div class="form-row">
@@ -131,6 +131,24 @@
             <button type="submit" class="btn btn-primary">Save</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="deleteModalOverlay">
+      <div class="modal" id="deleteModal">
+        <div class="modal-header">
+          <h3 class="modal-title">Delete Proxy</h3>
+          <button class="btn btn-icon btn-close" id="closeDeleteModal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Delete <strong><span id="deleteProxyName" class="proxy-name-highlight"></span></strong>?</p>
+          <p class="modal-hint">This action cannot be undone.</p>
+          <input type="hidden" id="deleteProxyId">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="cancelDeleteBtn">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+        </div>
       </div>
     </div>
   </div>

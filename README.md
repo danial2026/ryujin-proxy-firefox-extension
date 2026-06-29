@@ -18,9 +18,10 @@
 - **Simple Proxy Setup** — Add SOCKS5 proxies with optional authentication
 - **Per-Tab Control** — Choose which tabs use the proxy, or route all tabs automatically
 - **Live Data Usage** — See exactly how much data each proxy sends and receives
-- **Smart URL Filtering** — Whitelist, blacklist, or use regex patterns to control which sites go through the proxy
+- **Smart URL Filtering** — Whitelist, blacklist, or use regex patterns
 - **Clean Interface** — Distraction-free, dark-themed design
 - **No Tracking** — Everything runs locally in your browser, no accounts or cloud sync
+- **Logs & History** — View system logs with filtering, track ping history per proxy
 
 ## Quick Start
 
@@ -47,8 +48,10 @@ Example: Add `^https?://.*\.ads\..*$` to Regex Blacklist to block all ad domains
 Open the full settings page from the extension menu (gear icon) to:
 - Manage URL filters
 - Toggle data tracking
+- Configure ping method/URL
 - Reset usage statistics
 - View changelog and license
+- View system logs with filtering
 
 ## Privacy
 

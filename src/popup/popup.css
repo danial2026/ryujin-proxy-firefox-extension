@@ -255,6 +255,21 @@ body {
   color: var(--text-secondary);
 }
 
+.proxy-ping-info {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.proxy-ping-info.ping-success {
+  color: var(--success);
+}
+
+.proxy-ping-info.ping-error {
+  color: var(--error);
+}
+
 .proxy-actions {
   display: flex;
   gap: 4px;
@@ -727,7 +742,7 @@ body {
   width: 100%;
   padding: 14px 16px;
   background: var(--bg);
-  border: 1px solid var(--primary);
+  border: 1px solid var(--text-muted);
   border-radius: var(--radius);
   color: var(--text);
   font-family: inherit;
@@ -756,6 +771,49 @@ body {
   padding-top: 8px;
   border-top: 1px solid var(--border);
   margin-top: 8px;
+}
+
+.modal-body {
+  padding: 24px;
+  text-align: center;
+}
+
+.modal-body p {
+  font-size: 14px;
+  color: var(--text);
+  margin: 0;
+}
+
+.modal-hint {
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+  margin-top: 8px !important;
+}
+
+.proxy-name-highlight {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 20px 24px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--error);
+  border: 1px solid var(--error);
+  height: 40px;
+  padding: 0 20px;
+}
+
+.btn-danger:hover {
+  background: rgba(255, 51, 102, 0.1);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -39,7 +39,13 @@
     proxyPassword: document.getElementById('proxyPassword'),
     cancelBtn: document.getElementById('cancelBtn'),
     settingsBtn: document.getElementById('settingsBtn'),
-    disconnectBtn: document.getElementById('disconnectBtn')
+    disconnectBtn: document.getElementById('disconnectBtn'),
+    deleteModalOverlay: document.getElementById('deleteModalOverlay'),
+    closeDeleteModal: document.getElementById('closeDeleteModal'),
+    cancelDeleteBtn: document.getElementById('cancelDeleteBtn'),
+    confirmDeleteBtn: document.getElementById('confirmDeleteBtn'),
+    deleteProxyId: document.getElementById('deleteProxyId'),
+    deleteProxyName: document.getElementById('deleteProxyName')
   };
 
   function formatBytes(bytes) {
@@ -52,6 +58,17 @@
 
   function formatHost(host, port) {
     return `${host}:${port}`;
+  }
+
+  function formatTime(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now - date;
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+    return date.toLocaleDateString();
   }
 
   async function sendMessage(type, data = {}) {
@@ -82,14 +99,31 @@
 
       const infoDiv = document.createElement('div');
       infoDiv.className = 'proxy-info';
+
       const nameSpan = document.createElement('span');
       nameSpan.className = 'proxy-name';
       nameSpan.textContent = proxy.name;
+
       const hostSpan = document.createElement('span');
       hostSpan.className = 'proxy-host';
       hostSpan.textContent = formatHost(proxy.host, proxy.port);
+
+      const pingInfoSpan = document.createElement('span');
+      pingInfoSpan.className = 'proxy-ping-info';
+      if (proxy.lastPing) {
+        const pingResult = proxy.lastPing;
+        if (pingResult.success) {
+          pingInfoSpan.textContent = `Ping: ${pingResult.latency}ms (${formatTime(pingResult.timestamp)})`;
+          pingInfoSpan.className = 'proxy-ping-info ping-success';
+        } else {
+          pingInfoSpan.textContent = `Failed: ${pingResult.error || 'Unknown'} (${formatTime(pingResult.timestamp)})`;
+          pingInfoSpan.className = 'proxy-ping-info ping-error';
+        }
+      }
+
       infoDiv.appendChild(nameSpan);
       infoDiv.appendChild(hostSpan);
+      infoDiv.appendChild(pingInfoSpan);
 
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'proxy-actions';
@@ -125,6 +159,7 @@
           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
         </svg>
       `;
+
       actionsDiv.appendChild(pingBtn);
       actionsDiv.appendChild(editBtn);
       actionsDiv.appendChild(deleteBtn);
@@ -149,7 +184,7 @@
 
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        deleteProxy(proxy.id);
+        openDeleteModal(proxy.id, proxy.name);
       });
 
       elements.proxyList.appendChild(li);
@@ -278,7 +313,6 @@
   }
 
   async function deleteProxy(proxyId) {
-    if (!confirm('Delete this proxy?')) return;
     const response = await sendMessage('REMOVE_PROXY', { id: proxyId });
     if (response.success) {
       state.proxies = state.proxies.filter(p => p.id !== proxyId);
@@ -290,6 +324,7 @@
   async function pingProxy(proxyId, btn) {
     const originalHTML = btn.innerHTML;
     btn.disabled = true;
+    btn.classList.add('pinging');
     btn.innerHTML = `
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
         <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
@@ -298,8 +333,13 @@
     `;
 
     try {
-      const response = await sendMessage('PING_PROXY', { id: proxyId });
+      const response = await sendMessage('PING_PROXY', { 
+        proxyId, 
+        method: state.settings.pingMethod || 'http', 
+        url: state.settings.pingUrl || 'http://www.google.com/generate_204' 
+      });
       if (response.success) {
+        btn.classList.remove('pinging');
         btn.classList.add('success');
         btn.title = `Ping: ${response.latency}ms`;
         setTimeout(() => {
@@ -309,6 +349,7 @@
           btn.disabled = false;
         }, 30000);
       } else {
+        btn.classList.remove('pinging');
         btn.classList.add('error');
         btn.title = `Failed: ${response.error}`;
         setTimeout(() => {
@@ -316,9 +357,10 @@
           btn.title = '';
           btn.innerHTML = originalHTML;
           btn.disabled = false;
-        }, 3000);
+        }, 5000);
       }
     } catch (e) {
+      btn.classList.remove('pinging');
       btn.classList.add('error');
       btn.title = `Error: ${e.message}`;
       setTimeout(() => {
@@ -326,7 +368,7 @@
         btn.title = '';
         btn.innerHTML = originalHTML;
         btn.disabled = false;
-      }, 3000);
+      }, 5000);
     }
   }
 
@@ -369,6 +411,8 @@
       elements.proxyPassword.value = editProxy.password || '';
     } else {
       elements.modalTitle.textContent = 'Add Proxy';
+      elements.proxyHost.value = '127.0.0.1';
+      elements.proxyPort.value = '10808';
     }
 
     elements.modalOverlay.classList.add('active');
@@ -399,10 +443,15 @@
     let response;
 
     if (proxyId) {
-      const idx = state.proxies.findIndex(p => p.id === proxyId);
-      if (idx !== -1) {
-        state.proxies[idx] = { ...state.proxies[idx], ...proxyData };
-        response = { success: true, proxy: state.proxies[idx] };
+      response = await sendMessage('UPDATE_PROXY', { 
+        proxyId, 
+        proxy: proxyData 
+      });
+      if (response.success) {
+        const idx = state.proxies.findIndex(p => p.id === proxyId);
+        if (idx !== -1) {
+          state.proxies[idx] = { ...state.proxies[idx], ...proxyData };
+        }
       }
     } else {
       response = await sendMessage('ADD_PROXY', { proxy: proxyData });
@@ -414,6 +463,8 @@
     if (response.success) {
       closeModal();
       renderAll();
+    } else {
+      alert(response.error || 'Failed to save proxy');
     }
   }
 
@@ -421,6 +472,22 @@
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function openDeleteModal(proxyId, proxyName) {
+    elements.deleteProxyId.value = proxyId;
+    elements.deleteProxyName.textContent = proxyName;
+    elements.deleteModalOverlay.classList.add('active');
+  }
+
+  function closeDeleteModal() {
+    elements.deleteModalOverlay.classList.remove('active');
+  }
+
+  async function confirmDeleteProxy() {
+    const proxyId = elements.deleteProxyId.value;
+    closeDeleteModal();
+    await deleteProxy(proxyId);
   }
 
   elements.addProxyBtn.addEventListener('click', () => openModal());
@@ -433,20 +500,34 @@
   });
   elements.routeAllTabs.addEventListener('change', (e) => setRouteAllTabs(e.target.checked));
   elements.settingsBtn.addEventListener('click', () => {
-    browser.runtime.openOptionsPage();
+    browser.tabs.create({ url: browser.runtime.getURL('src/options/options.html') });
   });
   elements.disconnectBtn.addEventListener('click', disconnectProxy);
 
+  elements.closeDeleteModal.addEventListener('click', closeDeleteModal);
+  elements.cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+  elements.confirmDeleteBtn.addEventListener('click', confirmDeleteProxy);
+  elements.deleteModalOverlay.addEventListener('click', (e) => {
+    if (e.target === elements.deleteModalOverlay) closeDeleteModal();
+  });
+
   browser.runtime.onMessage.addListener((message) => {
     if (message.type === 'STATE_CHANGED') {
-      state = message.state;
+      state.proxies = message.state.proxies;
+      state.activeProxyId = message.state.activeProxyId;
+      state.tabRouting = message.state.tabRouting;
+      state.urlFilters = message.state.urlFilters;
+      state.settings = message.state.settings;
       renderAll();
     }
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') {
+      closeModal();
+      closeDeleteModal();
+    }
   });
 
-  loadState();
+  loadState().catch(e => console.error('Popup loadState failed:', e));
 })();

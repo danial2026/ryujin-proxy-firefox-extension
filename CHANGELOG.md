@@ -2,88 +2,98 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## [0.0.8] - 2026-06-29
+
+### Fixed
+- Proxy now actually routes your traffic through the proxy server — previously it looked connected but traffic went direct
+- Choosing which tabs use the proxy now works correctly (per-tab routing)
+- Proxy username and password (authentication) now actually gets sent to the proxy server
+- Connection test (ping) no longer interferes with your active proxy connection
+- Fixed several crashes and hangs when opening the popup or options page
+- Extension icon in Firefox add-ons settings now shows up properly
+
+### Changed
+- Rewrote how the extension connects to your proxy behind the scenes for better reliability
+- WebSocket connections (used by some websites and apps) now also go through the proxy
+
+## [0.0.7] - 2026-06-29
+
+### Fixed
+- Whitelist and blacklist filters now start turned off by default (were accidentally on)
+- Proxy wasn't routing traffic when filters were turned off — now fixed
+- Changelog viewer now opens properly in its own page
+
+### Added
+- Toggle switches to turn whitelist/blacklist on and off in the options page
+- Connection test (ping) now uses a more reliable test URL by default
+- GitHub links in the options page header
+
+### Changed
+- Whitelist and blacklist now default to off (they were on before, which blocked all sites until you added filters)
+
+## [0.0.6] - 2026-06-29
+
+### Fixed
+- Options page content is now properly centered on screen
+- Settings menus now match the black-and-white theme
+
+### Added
+- Options page now opens in its own tab instead of a popup
+- Activity log viewer with color-coded entries (info, success, warning, error)
+- Ping test results are saved and shown next to each proxy
+- Full-screen delete confirmation when removing a proxy
+
+## [0.0.5] - 2026-06-29
+
+### Fixed
+- Changelog viewer now shows content correctly
+- Version number now loads automatically (no more hardcoded numbers)
+- Settings menus now properly follow the black-and-white design
+
+## [0.0.4] - 2026-06-28
+
+### Fixed
+- Editing a proxy now fills in its current values properly
+- Switching proxies now updates the UI immediately without reopening the popup
+- Connection test (ping) now works without showing "Proxy not found" errors
+- Ping now respects your chosen method (TCP/HTTP) and URL from settings
+- Delete confirmation is now a proper full-screen dialog
+
+### Added
+- Ping history — each proxy shows when it was last tested and the result
 
 ## [0.0.3] - 2026-06-28
 
 ### Added
-- Default proxy values: 127.0.0.1:10808 in add/edit form
-- Disconnect button to return to direct connection
-- Default ping URL (httpbin.org/get) in settings
+- New proxy form now pre-fills with 127.0.0.1:10808 (common default)
+- Disconnect button to switch back to direct internet connection
+- Default ping URL for connection testing
 
 ## [0.0.2] - 2026-06-28
 
 ### Added
-- Proxy connection test button (ping) with TCP/HTTP methods
-- Ping method and URL configuration in settings
+- Connection test (ping) button to check if a proxy is working
+- Choose between TCP or HTTP ping methods
+- Configure which URL to use for ping tests
 
 ### Fixed
-- Proxy selection now immediately switches to selected proxy (no restart needed)
-- White border for selected proxy item
-- White border on all text input fields
-- Grey selection color for text highlighting
-- Removed white line on left edge of popup
-- Added edit button to proxy list (uses same form as add)
-- Fixed URL filter updates not persisting
-- Fixed about:addons preferences icon not showing
-- Higher contrast text colors for better readability
-
-### Changed
-- All text inputs now have white borders
-- Selected proxy shows white border instead of left accent bar
-- Text selection is now grey instead of white
+- Clicking a proxy now immediately switches to it (no restart needed)
+- Lots of visual polish — white borders, better contrast, consistent styling
+- Edit button now visible on each proxy in the list
+- URL filter changes now save properly
+- Text is now easier to read with higher contrast
 
 ## [0.0.1] - 2026-06-28
 
 ### Added
-- Initial release of Ryujin Proxy
-- SOCKS5 proxy management (add, edit, remove with authentication)
-- Per-tab proxy routing with "route all tabs" default option
-- Real-time data usage tracking per proxy (sent/received bytes)
-- URL filtering system:
-  - Domain whitelist (bypass proxy for listed domains)
-  - Domain blacklist (block listed domains entirely)
-  - Regex whitelist (JavaScript regex patterns to bypass)
-  - Regex blacklist (JavaScript regex patterns to block)
-- Modern minimal black & white UI with Inter font
-- Persistent settings and data storage via browser.storage.local
-- Firefox Manifest V2 compatible
-- Service worker background script for proxy management
-- Content script for client-side URL filtering
-- Popup interface for quick proxy switching
-- Full options page for advanced configuration
-- Danger zone: reset data usage / reset all settings
-- Changelog and license viewers in options
-
-### Technical
-- Background service worker handles:
-  - Proxy configuration via browser.proxy API
-  - Tab routing via browser.tabs API
-  - Data tracking via browser.webRequest API
-  - URL filtering via browser.webRequestBlocking API
-- Storage utilities for type-safe persistence
-- Zero dependencies, vanilla JavaScript
-- CSS custom properties for theming
-- Accessible markup with ARIA labels
-
-### Design
-- Pure black background (`#000000`)
-- Near-black surfaces (`#0A0A0A`)
-- Pure white primary (`#FFFFFF`)
-- Semantic colors: Success `#00FF88`, Warning `#FFCC00`, Error `#FF3366`
-- Inter font for UI, monospace for technical data
-- No shadows, no gradients, 1px borders only
-- Opacity-based hierarchy (5%-100% white)
-- 12px/16px border radius
-- 150ms micro-interactions
-
-## [Unreleased]
-
-### Planned
-- Manifest V3 migration
-- Proxy import/export (JSON)
-- Per-proxy routing rules
-- Connection health checks
-- Keyboard shortcuts
-- Context menu integration
+- First release of Ryujin Proxy
+- Add, edit, and remove SOCKS5 proxies (with optional username/password)
+- Choose which browser tabs use the proxy, or route all tabs through it
+- Real-time data usage tracking — see how much data each proxy has sent and received
+- URL filtering — make certain websites bypass the proxy or get blocked entirely
+- Black-and-white minimalist interface
+- All your proxies, settings, and data are saved automatically
+- Quick proxy switching from the popup menu
+- Full settings page with advanced options
+- Reset data usage or factory reset from the "Danger Zone"
+- Changelog and license viewer built into the options page
