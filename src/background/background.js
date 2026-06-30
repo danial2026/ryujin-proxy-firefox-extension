@@ -3,7 +3,6 @@
  * Handles proxy management, tab routing, data tracking, and URL filtering
  */
 
-
 const STORAGE_KEYS = {
   PROXIES: 'ryujin_proxies',
   ACTIVE_PROXY: 'ryujin_active_proxy',
@@ -19,8 +18,9 @@ const DEFAULT_SETTINGS = {
   routeAllTabs: true,
   showNotifications: true,
   dataTrackingEnabled: true,
-  pingMethod: 'http',
-  pingUrl: 'http://www.google.com/generate_204',
+  pingMethod: 'GET',
+  pingUrl: 'https://www.google.com/generate_204',
+  expectedHttpStatus: 204,
   whitelistEnabled: false,
   blacklistEnabled: false
 };
@@ -33,6 +33,8 @@ let proxies = [];
 let settings = { ...DEFAULT_SETTINGS };
 let pingHistory = {};
 let logs = [];
+let _pingUrl = null;
+let _pingProxyId = null;
 let _pingOverride = null;
 
 async function init() {
@@ -68,11 +70,17 @@ async function loadAllData() {
 function setupProxyRequestListener() {
   browser.proxy.onRequest.addListener(
     (details) => {
-      if (!activeProxyId) return { type: 'direct' };
-
       if (_pingOverride && _pingOverride.testUrl === details.url) {
-        return { type: 'socks', host: _pingOverride.host, port: _pingOverride.port };
+        return {
+          type: 'socks',
+          host: _pingOverride.host,
+          port: _pingOverride.port,
+          ...(_pingOverride.username && { username: _pingOverride.username }),
+          ...(_pingOverride.password && { password: _pingOverride.password })
+        };
       }
+
+      if (!activeProxyId) return { type: 'direct' };
 
       if (settings.blacklistEnabled || settings.whitelistEnabled) {
         const decision = checkUrlFilters(details.url);
@@ -158,7 +166,7 @@ function setupMessageListener() {
         getTabs().then(sendResponse);
         return true;
       case 'PING_PROXY':
-        pingProxy(message.proxyId, message.method, message.url).then(sendResponse);
+        pingProxy(message.proxyId, message.method, message.url, message.httpMethod).then(sendResponse);
         return true;
     }
   });
@@ -352,30 +360,26 @@ async function getTabs() {
   }));
 }
 
-async function pingProxy(proxyId, method, url) {
+async function pingProxy(proxyId, method, url, httpMethod) {
   const proxy = proxies.find(p => p.id === proxyId);
   if (!proxy) {
-    addLog('error', `Ping failed - proxy not found [${proxyId}]`);
+    addLog('error', `Ping failed - proxy not found`);
     return { success: false, error: 'Proxy not found' };
   }
 
-  const pingMethod = method || settings.pingMethod || 'http';
-  const pingUrl = url || settings.pingUrl || 'http://www.google.com/generate_204';
+  const pingUrl = url || settings.pingUrl || 'https://www.google.com/generate_204';
+  const expectedStatus = settings.expectedHttpStatus || 204;
+  const pingMethod = httpMethod || settings.pingMethod || 'GET';
   const startTime = Date.now();
 
-  addLog('info', `Pinging [${proxy.name}] using ${pingMethod.toUpperCase()} method`);
+  addLog('info', `Pinging [${proxy.name}] with ${pingMethod}`);
 
   try {
-    if (pingMethod === 'tcp') {
-      await testTcpConnection(proxy.host, proxy.port, proxy.username, proxy.password, pingUrl);
-    } else {
-      await testHttpConnection(proxy, pingUrl);
-    }
-
+    const statusCode = await testProxyConnection(proxy, pingUrl, pingMethod);
     const latency = Date.now() - startTime;
     const pingData = { success: true, latency, method: pingMethod, timestamp: Date.now() };
     await savePingHistory(proxyId, pingData);
-    addLog('success', `Ping [${proxy.name}] - ${latency}ms (${pingMethod.toUpperCase()})`);
+    addLog('success', `Ping [${proxy.name}] - ${latency}ms (HTTP ${statusCode})`);
     broadcastStateChange();
     return { success: true, latency, method: pingMethod };
   } catch (error) {
@@ -388,40 +392,38 @@ async function pingProxy(proxyId, method, url) {
   }
 }
 
-async function testTcpConnection(host, port, username, password, pingUrl) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    _pingOverride = { host, port, testUrl: pingUrl };
-    await new Promise(r => setTimeout(r, 200));
-    const response = await fetch(pingUrl, {
-      method: 'GET',
-      signal: controller.signal,
-      cache: 'no-cache'
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return true;
-  } finally {
-    _pingOverride = null;
-    clearTimeout(timeout);
-  }
-}
-
-async function testHttpConnection(proxy, url) {
+async function testProxyConnection(proxy, url, httpMethod) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    _pingOverride = { host: proxy.host, port: proxy.port, testUrl: url };
-    await new Promise(r => setTimeout(r, 200));
-    const response = await fetch(url, {
-      method: 'GET',
+    _pingOverride = { 
+      host: proxy.host, 
+      port: proxy.port,
+      testUrl: url,
+      username: proxy.username,
+      password: proxy.password
+    };
+    await new Promise(r => setTimeout(r, 100));
+    
+    const fetchOptions = {
+      method: httpMethod,
       signal: controller.signal,
-      cache: 'no-cache'
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return true;
+      cache: 'no-cache',
+      headers: {}
+    };
+
+    if (httpMethod !== 'GET' && httpMethod !== 'HEAD') {
+      fetchOptions.body = '';
+    }
+
+    const response = await fetch(url, fetchOptions);
+    
+    if (response.status < 100 || response.status >= 600) {
+      throw new Error(`Invalid status: ${response.status}`);
+    }
+    
+    return response.status;
   } finally {
     _pingOverride = null;
     clearTimeout(timeout);

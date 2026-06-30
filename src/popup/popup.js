@@ -127,7 +127,7 @@
 
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'proxy-actions';
-      
+
       const pingBtn = document.createElement('button');
       pingBtn.className = 'proxy-action-btn ping';
       pingBtn.dataset.action = 'ping';
@@ -333,10 +333,11 @@
     `;
 
     try {
-      const response = await sendMessage('PING_PROXY', { 
-        proxyId, 
-        method: state.settings.pingMethod || 'http', 
-        url: state.settings.pingUrl || 'http://www.google.com/generate_204' 
+      const response = await sendMessage('PING_PROXY', {
+        proxyId,
+        method: state.settings.pingMethod || 'GET',
+        url: state.settings.pingUrl || 'https://www.google.com/generate_204',
+        httpMethod: state.settings.pingMethod || 'GET'
       });
       if (response.success) {
         btn.classList.remove('pinging');
@@ -443,9 +444,9 @@
     let response;
 
     if (proxyId) {
-      response = await sendMessage('UPDATE_PROXY', { 
-        proxyId, 
-        proxy: proxyData 
+      response = await sendMessage('UPDATE_PROXY', {
+        proxyId,
+        proxy: proxyData
       });
       if (response.success) {
         const idx = state.proxies.findIndex(p => p.id === proxyId);
