@@ -7,8 +7,9 @@
       routeAllTabs: true,
       showNotifications: true,
       dataTrackingEnabled: true,
-      pingMethod: 'http',
-      pingUrl: 'http://www.google.com/generate_204',
+      pingMethod: 'GET',
+      pingUrl: 'https://www.google.com/generate_204',
+      expectedHttpStatus: 204,
       whitelistEnabled: false,
       blacklistEnabled: false
     },
@@ -29,6 +30,7 @@
     showNotifications: document.getElementById('showNotifications'),
     pingMethod: document.getElementById('pingMethod'),
     pingUrl: document.getElementById('pingUrl'),
+    expectedHttpStatus: document.getElementById('expectedHttpStatus'),
     whitelistEnabled: document.getElementById('whitelistEnabled'),
     blacklistEnabled: document.getElementById('blacklistEnabled'),
     resetDataBtn: document.getElementById('resetDataBtn'),
@@ -180,8 +182,9 @@
   function renderSettings() {
     elements.dataTrackingEnabled.checked = state.settings.dataTrackingEnabled;
     elements.showNotifications.checked = state.settings.showNotifications;
-    elements.pingMethod.value = state.settings.pingMethod || 'http';
-    elements.pingUrl.value = state.settings.pingUrl || 'http://www.google.com/generate_204';
+    elements.pingMethod.value = state.settings.pingMethod || 'GET';
+    elements.pingUrl.value = state.settings.pingUrl || 'https://www.google.com/generate_204';
+    elements.expectedHttpStatus.value = state.settings.expectedHttpStatus || 204;
     elements.whitelistEnabled.checked = state.settings.whitelistEnabled !== false;
     elements.blacklistEnabled.checked = state.settings.blacklistEnabled !== false;
   }
@@ -532,6 +535,7 @@
   elements.showNotifications.addEventListener('change', (e) => toggleSetting('showNotifications', e.target.checked));
   elements.pingMethod.addEventListener('change', (e) => toggleSetting('pingMethod', e.target.value));
   elements.pingUrl.addEventListener('change', (e) => toggleSetting('pingUrl', e.target.value));
+  elements.expectedHttpStatus.addEventListener('change', (e) => toggleSetting('expectedHttpStatus', parseInt(e.target.value, 10)));
   elements.whitelistEnabled.addEventListener('change', (e) => toggleSetting('whitelistEnabled', e.target.checked));
   elements.blacklistEnabled.addEventListener('change', (e) => toggleSetting('blacklistEnabled', e.target.checked));
 
