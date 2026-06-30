@@ -13,6 +13,19 @@
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="assets/images/screenshot-popup-0.png" width="35%" />
+  <img src="assets/images/screenshot-popup-1.png" width="35%" />
+</p>
+
+<p align="center">
+  <img src="assets/images/screenshot-setting.png" width="70%" />
+</p>
+
+---
+
 ## Features
 
 - **Simple Proxy Setup** — Add SOCKS5 proxies with optional authentication
