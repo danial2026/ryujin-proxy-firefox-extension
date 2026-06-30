@@ -2,55 +2,67 @@
 
 ## Architecture Overview
 
-Ryujin Proxy is a Firefox Manifest V2 extension built with vanilla JavaScript. It uses a persistent background service worker that configures proxy routing via `browser.proxy.onRequest`, manages per-tab routing, tracks data usage, and handles URL filtering.
+Ryujin Proxy is a Firefox Manifest V2 extension built with vanilla JavaScript (no frameworks or build tools). It uses a persistent background script that configures proxy routing via `browser.proxy.onRequest`, manages per-tab routing, tracks data usage, and handles URL filtering.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Firefox Browser                           │
-│                                                                  │
-│   ┌─────────────────┐    ┌────────────────┐    ┌────────────┐   │
-│   │    Popup UI      │    │   Options UI   │    │ Changelog  │   │
-│   │   (popup.js)     │    │  (options.js)  │    │  (standalone)│  │
-│   │ 380px, popup     │    │ full settings  │    │   page     │   │
-│   └────────┬─────────┘    └───────┬────────┘    └────────────┘   │
-│            │                      │                              │
-│            └──────────┬───────────┘                              │
-│                       ▼                                          │
-│              ┌──────────────────┐                                │
-│              │  Background SW   │                                │
-│              │ (background.js)  │                                │
-│              │ persistent: true │                                │
-│              └─────────┬────────┘                                │
-│                        │                                         │
-│     ┌──────────────────┼──────────────────┐                      │
-│     ▼                  ▼                  ▼                      │
-│ ┌──────────┐    ┌───────────┐    ┌───────────────┐              │
-│ │proxy.on  │    │ webRequest│    │   storage     │              │
-│ │Request   │    │ onBefore- │    │   .local      │              │
-│ │(routing) │    │ Request/  │    │               │              │
-│ │          │    │ onHeaders │    │               │              │
-│ │socks +   │    │ Received  │    │ persist all   │              │
-│ │auth      │    │ (tracking)│    │ state         │              │
-│ └──────────┘    └───────────┘    └───────────────┘              │
-│                                                                  │
-│   ┌──────────────────────────────────────────────────────────┐   │
-│   │              Content Script (content.js)                  │   │
-│   │  Runs at document_start on <all_urls>                    │   │
-│   │  Currently only relays STATE_CHANGED to local storage    │   │
-│   └──────────────────────────────────────────────────────────┘   │
-└──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Firefox Browser                              │
+│                                                                      │
+│   ┌──────────────────────┐      ┌──────────────────────────────┐    │
+│   │       Popup UI        │      │        Options Page           │    │
+│   │    (popup.html/js)    │      │    (options.html/js)          │    │
+│   │    380px popup        │      │    full settings page          │    │
+│   │                      │      │    ├─ Filter tabs (5 panels)   │    │
+│   │   Proxy list          │      │    ├─ Settings grid            │    │
+│   │   Active proxy stats  │      │    ├─ Changelog modal          │    │
+│   │   Tab routing list    │      │    └─ Danger zone              │    │
+│   │   Add/Edit modals     │      │                              │    │
+│   └──────────┬───────────┘      └──────────────┬───────────────┘    │
+│              │                                  │                    │
+│              └──────────────┬───────────────────┘                    │
+│                             ▼                                        │
+│              ┌──────────────────────────────┐                        │
+│              │      Background Script       │                        │
+│              │    (background.js)            │                        │
+│              │    persistent: true            │                        │
+│              │                               │                        │
+│              │  State (in-memory):            │                        │
+│              │    proxies[], activeProxyId    │                        │
+│              │    tabRouting Map, dataUsage   │                        │
+│              │    urlFilters, settings        │                        │
+│              │    pingHistory{}, logs[]       │                        │
+│              │    _pingOverride               │                        │
+│              └──────────────┬─────────────────┘                        │
+│                             │                                          │
+│     ┌───────────────────────┼──────────────────────────┐               │
+│     ▼                       ▼                          ▼               │
+│ ┌──────────────┐   ┌───────────────────┐   ┌──────────────────────┐   │
+│ │ proxy.on     │   │ webRequest        │   │ browser.storage      │   │
+│ │ Request      │   │ onBeforeRequest   │   │ .local               │   │
+│ │ (routing)    │   │ onHeadersReceived │   │                      │   │
+│ │              │   │ (data tracking)   │   │ Persist all state   │   │
+│ │ SOCKS5 +     │   │                   │   │ on every mutation    │   │
+│ │ auth return  │   │                   │   │                      │   │
+│ └──────────────┘   └───────────────────┘   └──────────────────────┘   │
+│                                                                      │
+│   ┌──────────────────────────────────────────────────────────────┐   │
+│   │         Content Script (content.js)                          │   │
+│   │  Runs at document_start on <all_urls>, all_frames: true      │   │
+│   │  Persists urlFilters to storage on STATE_CHANGED             │   │
+│   └──────────────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Component Details
 
-### Background Service Worker (`src/background/background.js`)
+### Background Script (`src/background/background.js`)
 
 The core of the extension. Runs persistently and handles:
 
 | Module | Responsibility |
 |--------|----------------|
-| **Proxy Routing** | Routes traffic via `browser.proxy.onRequest` listener returning socks config per-request |
-| **Ping Override** | Temporarily overrides proxy routing for ping tests without disrupting active connection |
+| **Proxy Routing** | Routes traffic via `browser.proxy.onRequest` listener returning SOCKS5 config per-request |
+| **Ping Override** | Temporarily overrides proxy routing for HTTP ping tests without disrupting active connection |
 | **Tab Routing** | Tracks which tabs should route through proxy via `tabRouting` Map |
 | **Data Tracking** | Monitors sent/received bytes via `webRequest` API (onBeforeRequest + onHeadersReceived) |
 | **URL Filtering** | Blocks/allows requests via `checkUrlFilters` inside the `proxy.onRequest` handler |
@@ -58,180 +70,229 @@ The core of the extension. Runs persistently and handles:
 | **Ping History** | Stores per-proxy ping results with latency, method, and timestamp |
 | **Storage** | Persists all state via `browser.storage.local` |
 
-#### Key Architecture: Proxy Routing via Listener
+#### Initialization Flow
+
+```
+init()
+  │
+  ├─► loadAllData()
+  │      ├─► browser.storage.local.get([ALL_KEYS])
+  │      ├─► Assign proxies, activeProxyId, tabRouting, dataUsage
+  │      ├─► Assign urlFilters, settings (merge with defaults), pingHistory, logs
+  │      └─► addLog('info', 'Background service initialized')
+  │
+  ├─► setupProxyRequestListener()
+  │      └─► browser.proxy.onRequest.addListener(...)
+  │
+  ├─► setupWebRequestListener()
+  │      └─► browser.webRequest.onBeforeRequest + onHeadersReceived
+  │
+  └─► setupMessageListener()
+         └─► browser.runtime.onMessage.addListener(...)
+```
+
+#### Proxy Routing via Listener
 
 Unlike many proxy extensions that use `browser.proxy.settings.set()`, Ryujin uses the `browser.proxy.onRequest` event listener. This allows per-request routing decisions, ping override without disrupting the active proxy, and URL filter integration.
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    proxy.onRequest Flow                          │
-│                                                                  │
-│  Firefox makes request                                           │
-│         │                                                        │
-│         ▼                                                        │
-│  proxy.onRequest listener fires                                  │
-│         │                                                        │
-│         ├──► No active proxy? ─────────────► return {type:'direct'}│
-│         │                                                        │
-│         ├──► Ping override matches URL? ───► return socks with   │
-│         │                                      override creds    │
-│         │                                                        │
-│         ├──► Blacklist blocks? ────────────► return {type:'direct'}│
-│         │                                                        │
-│         ├──► Whitelist enabled + not on it?► return {type:'direct'}│
-│         │                                                        │
-│         ├──► routeAllTabs=false + tab not    │                   │
-│         │    in tabRouting? ───────────────► return {type:'direct'}│
-│         │                                                        │
-│         └──► Found proxy? ─────────────────► return socks config │
-│                                                with auth if set  │
-└─────────────────────────────────────────────────────────────────┘
+proxy.onRequest Flow
+══════════════════════════════════════════════════════════════════════
+
+  Request from Firefox
+         │
+         ▼
+  ┌──────────────────┐
+  │ Ping override    │────► Yes ──► Return SOCKS config with override creds
+  │ (_pingOverride)  │           (routes ONLY the ping URL through test proxy)
+  └──────────────────┘
+         │ No
+         ▼
+  ┌──────────────────┐
+  │ activeProxyId    │────► null ──► Return { type: 'direct' }
+  │ set?             │
+  └──────────────────┘
+         │ Yes
+         ▼
+  ┌──────────────────┐
+  │ Blacklist check  │────► Blocked ──► Return { type: 'direct' }
+  │ (if enabled)     │
+  └──────────────────┘
+         │ Not blocked
+         ▼
+  ┌──────────────────┐
+  │ Whitelist check  │────► Not on whitelist ──► Return { type: 'direct' }
+  │ (if enabled)     │
+  └──────────────────┘
+         │ On whitelist (or disabled)
+         ▼
+  ┌──────────────────────┐
+  │ Tab routing check    │────► routeAllTabs=false AND tab not in
+  │                       │       tabRouting Map ──► { type: 'direct' }
+  └──────────────────────┘
+         │ Routed
+         ▼
+  ┌──────────────────┐
+  │ Return SOCKS5    │
+  │ config with      │
+  │ optional auth    │
+  └──────────────────┘
 ```
 
-#### Key Functions
+#### Key Code: Proxy Routing
 
 ```javascript
-// Proxy routing is done via event listener, not settings.set()
-browser.proxy.onRequest.addListener((details) => {
-  if (!activeProxyId) return { type: 'direct' };
+browser.proxy.onRequest.addListener(
+  (details) => {
+    // Ping override — highest priority
+    if (_pingOverride && _pingOverride.testUrl === details.url) {
+      return { type: 'socks', host, port, ...(username && { username }), ...(password && { password }) };
+    }
+    // No active proxy
+    if (!activeProxyId) return { type: 'direct' };
+    // URL filter checks
+    if (settings.blacklistEnabled || settings.whitelistEnabled) {
+      const decision = checkUrlFilters(details.url);
+      if (settings.blacklistEnabled && decision.cancel) return { type: 'direct' };
+      if (settings.whitelistEnabled) {
+        const onWhitelist = regexWhitelist.some(...) || whitelist.some(w => details.url.includes(w));
+        if (!onWhitelist) return { type: 'direct' };
+      }
+    }
+    // Tab routing
+    if (!settings.routeAllTabs && !tabRouting.get(details.tabId)) {
+      return { type: 'direct' };
+    }
+    // Found proxy → return SOCKS config
+    const proxy = proxies.find(p => p.id === activeProxyId);
+    if (!proxy) return { type: 'direct' };
+    return { type: 'socks', host: proxy.host, port: proxy.port, ... };
+  },
+  { urls: ['<all_urls>', 'ws://*/*', 'wss://*/*'] }
+);
+```
 
-  // Ping override: route only the test URL through specific proxy
-  if (_pingOverride && _pingOverride.testUrl === details.url) {
-    return { type: 'socks', host, port, ...(username && { username }), ...(password && { password }) };
-  }
+#### Key Code: Data Tracking
 
-  // URL filtering check
-  if (settings.blacklistEnabled || settings.whitelistEnabled) {
-    const decision = checkUrlFilters(details.url);
-    if (settings.blacklistEnabled && decision.cancel) return { type: 'direct' };
-    if (settings.whitelistEnabled && !onWhitelist) return { type: 'direct' };
-  }
+```javascript
+function setupWebRequestListener() {
+  browser.webRequest.onBeforeRequest.addListener(
+    (details) => {
+      if (settings.dataTrackingEnabled && shouldTrackRequest(details)) {
+        trackDataUsage(details.tabId, requestBodyLength, 'sent');
+      }
+      return { cancel: false };
+    },
+    { urls: ['<all_urls>'] },
+    ['blocking', 'requestBody']
+  );
 
-  // Tab routing check
-  if (!settings.routeAllTabs && !tabRouting.get(details.tabId)) {
-    return { type: 'direct' };
-  }
-
-  // Return proxy config
-  const proxy = proxies.find(p => p.id === activeProxyId);
-  return { type: 'socks', host: proxy.host, port: proxy.port,
-    ...(proxy.username && { username: proxy.username }),
-    ...(proxy.password && { password: proxy.password }) };
-}, { urls: ['<all_urls>', 'ws://*/*', 'wss://*/*'] });
-
-// Track bandwidth per proxy
-function trackDataUsage(tabId, bytes, direction) {
-  if (!activeProxyId) return;
-  const current = dataUsage.get(activeProxyId) || { sent: 0, received: 0 };
-  current[direction] += bytes;
-  dataUsage.set(activeProxyId, current);
-  saveDataUsage();
+  browser.webRequest.onHeadersReceived.addListener(
+    (details) => {
+      if (settings.dataTrackingEnabled && shouldTrackRequest(details)) {
+        const header = details.responseHeaders?.find(h => h.name.toLowerCase() === 'content-length');
+        if (header) trackDataUsage(details.tabId, parseInt(header.value), 'received');
+      }
+      return {};
+    },
+    { urls: ['<all_urls>'] },
+    ['responseHeaders']
+  );
 }
 ```
 
 ### Popup (`src/popup/`)
 
-Lightweight UI for quick proxy switching (380px wide).
+Lightweight 380px-wide UI for quick proxy switching and status monitoring.
 
-**State Management:**
+**State managed locally:**
 ```javascript
 let state = {
   proxies: [],
   activeProxyId: null,
   tabRouting: {},
   urlFilters: { whitelist: [], blacklist: [], regexWhitelist: [], regexBlacklist: [] },
-  settings: {
-    routeAllTabs: true, showNotifications: true, dataTrackingEnabled: true,
-    pingMethod: 'GET', pingUrl: 'https://www.google.com/generate_204',
-    expectedHttpStatus: 204
-  }
+  settings: { routeAllTabs: true, showNotifications: true, dataTrackingEnabled: true }
 };
 ```
 
-**Message Passing:**
-```javascript
-// Request full state from background
-browser.runtime.sendMessage({ type: 'GET_STATE' });
+**UI Sections:**
+1. **Header** — App title + settings gear button (opens options page in new tab)
+2. **Proxy List** — Each item shows name, host:port, ping history status, and action buttons (ping, edit, delete). Clicking selects/activates the proxy.
+3. **Active Proxy** — Green status indicator with glow, data usage stats (sent/received), disconnect button
+4. **Tab Routing** — "Route all tabs" toggle + per-tab list with favicon, title, hostname, and individual route checkboxes
+5. **Modals** — Add/Edit proxy form (name, host, port, username, password), Delete confirmation
 
-// Set active proxy
-browser.runtime.sendMessage({ type: 'SET_ACTIVE_PROXY', id: proxyId });
-
-// Ping a proxy
-browser.runtime.sendMessage({ type: 'PING_PROXY', proxyId, method, url, httpMethod });
-
-// Listen for background updates
-browser.runtime.onMessage.addListener((msg) => {
-  if (msg.type === 'STATE_CHANGED') renderAll();
-});
-```
-
-**UI Components:**
-- Proxy list with inline ping, edit, delete actions
-- Active proxy status with sent/received data stats
-- Tab routing list with per-tab toggles (disabled when routeAllTabs is on)
-- Add/Edit proxy modal form
-- Delete proxy confirmation modal
-- Settings button opens options page in new tab
+**State Sync:** `browser.runtime.onMessage` listens for `STATE_CHANGED` from background and re-renders all sections.
 
 ### Options Page (`src/options/`)
 
-Full settings interface opened from popup gear icon → opens in its own tab.
+Full settings interface opened from popup gear icon → opens in new tab.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              Options Page Layout                      │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │  Header: Logo | App Name | [Changelog][License]  │ │
-│  │         [GitHub]                                 │ │
-│  └─────────────────────────────────────────────────┘ │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │  Filter Tabs: [Whitelist][Blacklist]            │ │
-│  │                [Regex Whitelist][Regex Blacklist]│ │
-│  │                [Logs]                           │ │
-│  │                                                 │ │
-│  │  Active Panel:                                  │ │
-│  │  ┌─ List ───────────────────────────────┐       │ │
-│  │  │  [description text]         [+ Add]  │       │ │
-│  │  │  ┌──────────────────────────┐        │       │ │
-│  │  │  │ example.com       [✏][🗑]│        │       │ │
-│  │  │  │ sub.example.com    [✏][🗑]│        │       │ │
-│  │  │  └──────────────────────────┘        │       │ │
-│  │  └──────────────────────────────────────┘       │ │
-│  └─────────────────────────────────────────────────┘ │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │  Settings:                                       │ │
-│  │  ┌─ Data Tracking ──── [toggle] ──────────────┐ │ │
-│  │  ├─ Notifications ──── [toggle] ──────────────┤ │ │
-│  │  ├─ Ping Method ────── [HTTP Method select] ────┤ │ │
-│  │  ├─ Ping URL ───────── [text input] ──────────┤ │ │
-│  │  ├─ Expected HTTP Status ── [number input] ───┤ │ │
-│  │  ├─ Whitelist Filter ── [toggle] ─────────────┤ │ │
-│  │  └─ Blacklist Filter ── [toggle] ─────────────┘ │ │
-│  └─────────────────────────────────────────────────┘ │
-│                                                       │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │  Danger Zone:  [Reset Data] [Reset All]         │ │
-│  └─────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         Options Page Layout                                │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ Header: [Logo] Ryujin Proxy    [Changelog] [License] [GitHub]        │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Filter Tabs:  [Whitelist] [Blacklist] [Regex Whitelist]             │  │
+│  │                [Regex Blacklist] [Logs]                               │  │
+│  │                                                                      │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐    │  │
+│  │  │  Active Panel (e.g., Whitelist):                              │    │  │
+│  │  │  Description text                            [?]  [+ Add]    │    │  │
+│  │  │  ┌────────────────────────────────────────────────────────┐   │    │  │
+│  │  │  │ example.com                             [edit][delete]  │   │    │  │
+│  │  │  │ sub.example.com                         [edit][delete]  │   │    │  │
+│  │  │  └────────────────────────────────────────────────────────┘   │    │  │
+│  │  └──────────────────────────────────────────────────────────────┘    │  │
+│  │                                                                      │  │
+│  │  Logs Panel:                                                         │  │
+│  │  ┌──────────────────────────────────────────────────────────────┐    │  │
+│  │  │  [All] [Info] [Success] [Warning] [Error]    [Clear Logs]    │    │  │
+│  │  │  ┌────────────────────────────────────────────────────────┐   │    │  │
+│  │  │  │ 14:30:00.123  SUCCESS  Connected to proxy [My Proxy]   │   │    │  │
+│  │  │  │ 14:29:00.456  INFO    Settings updated                  │   │    │  │
+│  │  │  └────────────────────────────────────────────────────────┘   │    │  │
+│  │  └──────────────────────────────────────────────────────────────┘    │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Settings:                                                            │  │
+│  │  ┌─ Data Tracking ──────── [toggle] ───────────────────────────────┐ │  │
+│  │  ├─ Notifications ──────── [toggle] ───────────────────────────────┤ │  │
+│  │  ├─ Ping Method ────────── [GET/HEAD/POST/PUT/DELETE/OPTIONS] ─────┤ │  │
+│  │  ├─ Ping URL ───────────── [text input] ───────────────────────────┤ │  │
+│  │  ├─ Expected Status Code ─ [number input 204] ─────────────────────┤ │  │
+│  │  ├─ Whitelist Filter ───── [toggle] ───────────────────────────────┤ │  │
+│  │  └─ Blacklist Filter ───── [toggle] ───────────────────────────────┘ │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                            │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │  Danger Zone:                        [Reset Data Usage] [Reset All]  │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Features:**
-- Four-tab filter system (whitelist, blacklist, regex whitelist, regex blacklist)
-- Live regex testing with match/no-match feedback
+- Five-tab filter system (whitelist, blacklist, regex whitelist, regex blacklist, logs)
+- Add/Edit filter entries via modal with live regex tester (shows match/no-match in real time)
 - Settings toggles with immediate persistence via `UPDATE_SETTINGS`
-- Ping method/URL/expected status configuration
+- Ping method selection (GET, HEAD, POST, PUT, DELETE, OPTIONS)
+- Ping URL and expected HTTP status configuration
 - Whitelist/blacklist enable toggles
 - Activity log viewer with level-based filtering (all, info, success, warning, error)
 - Clear logs functionality
-- Danger zone with reset data usage and factory reset
-- Changelog and license viewers
+- Danger zone: Reset data usage (all proxies) and factory reset (clears ALL storage)
+- Changelog viewer (fetches `CHANGELOG.md`, parses markdown versions, renders in modal)
+- License link to GitHub
 
 ### Content Script (`src/content/content.js`)
 
-Runs on all pages at `document_start`. Currently minimal — only listens for `STATE_CHANGED` messages and persists URL filters to local storage.
+Runs on all pages at `document_start` with `all_frames: true`. Minimal — only persists URL filters to local storage on `STATE_CHANGED` messages.
 
 ```javascript
 browser.runtime.onMessage.addListener((message) => {
@@ -243,34 +304,29 @@ browser.runtime.onMessage.addListener((message) => {
 });
 ```
 
-### Changelog Page (`src/options/changelog.html`, `src/options/changelog.js`)
-
-Standalone page that renders CHANGELOG.md into styled HTML. Parses markdown version headers (`## [x.x.x] - date`) and change type headings (`### Added|Changed|Fixed|Removed`).
-
 ### Storage Utilities (`src/utils/storage.js`)
 
-Centralized storage abstraction with validation helpers. Not directly imported by background.js (which duplicates the pattern inline).
+Centralized storage abstraction with validation helpers. Not directly imported by background.js (which duplicates the pattern inline). Exports convenience functions for each storage key, validation utilities, and a `clearAll` function.
 
 ```javascript
-export const STORAGE_KEYS = {
-  PROXIES: 'ryujin_proxies',
-  ACTIVE_PROXY: 'ryujin_active_proxy',
-  TAB_ROUTING: 'ryujin_tab_routing',
-  DATA_USAGE: 'ryujin_data_usage',
-  URL_FILTERS: 'ryujin_url_filters',
-  SETTINGS: 'ryujin_settings',
-  PING_HISTORY: 'ryujin_ping_history',
-  LOGS: 'ryujin_logs'
+export {
+  STORAGE_KEYS, DEFAULT_SETTINGS, DEFAULT_URL_FILTERS,
+  getStorage, setStorage,
+  getProxies, setProxies,
+  getActiveProxyId, setActiveProxyId,
+  getTabRouting, setTabRouting,
+  getDataUsage, setDataUsage,
+  getUrlFilters, setUrlFilters,
+  getSettings, setSettings,
+  clearAll, generateId, formatBytes,
+  validateProxyConfig, validateRegex, testUrlAgainstFilters
 };
-
-export function validateProxyConfig(proxy) { /* name, host, port validation */ }
-export function testUrlAgainstFilters(url, filters) { /* regex+domain filter chain */ }
-export function validateRegex(pattern) { /* try/catch RegExp constructor */ }
 ```
 
 ## Data Flow
 
 ### Proxy Activation
+
 ```
 User clicks proxy in popup
        │
@@ -281,20 +337,38 @@ popup.js: sendMessage('SET_ACTIVE_PROXY', { id })
 background.js: setActiveProxy(id)
        │
        ├─► Updates activeProxyId in memory
-       │
        ├─► browser.storage.local.set({ ryujin_active_proxy: id })
-       │
-       └─► broadcastStateChange() ──► Notify all UIs
+       ├─► addLog(...)
+       └─► broadcastStateChange() ──► Notify all UI frames
        │
        ▼
 Popup receives STATE_CHANGED → renderAll() → UI updates instantly
+```
 
-Subsequent requests hit proxy.onRequest which checks activeProxyId
+### Proxy Disconnection
+
+```
+User clicks "Disconnect" in Active Proxy section
+       │
+       ▼
+popup.js: sendMessage('SET_ACTIVE_PROXY', { id: null })
+       │
+       ▼
+background.js: setActiveProxy(null)
+       │
+       ├─► Sets activeProxyId = null
+       ├─► Persists null to storage
+       ├─► addLog('warning', `Disconnected from proxy [...]`)
+       └─► broadcastStateChange()
+       │
+       ▼
+proxy.onRequest returns { type: 'direct' } for all subsequent requests
 ```
 
 ### Connection Ping Flow
+
 ```
-User clicks ping button on proxy
+User clicks ping button on proxy item
         │
         ▼
 popup.js: sendMessage('PING_PROXY', { proxyId, method, url, httpMethod })
@@ -303,106 +377,110 @@ popup.js: sendMessage('PING_PROXY', { proxyId, method, url, httpMethod })
 background.js: pingProxy(proxyId, method, url, httpMethod)
         │
         ├─► Sets _pingOverride = { host, port, username, password, testUrl }
-        │       (This makes proxy.onRequest route ONLY the ping URL
-        │        through the specified proxy, without changing the
-        │        active proxy setting — avoiding connection disruption)
+        │       (routes ONLY the ping URL through the specified proxy
+        │        without changing activeProxyId — no connection disruption)
         │
-        ├─► await fetch(pingUrl, { method: httpMethod }) routes through override
-        │       └─► HTTP method (GET/HEAD/POST/PUT/DELETE/OPTIONS): validates response status
+        ├─► await fetch(pingUrl, { method: httpMethod, signal, cache: 'no-cache' })
+        │       └─► HTTP method: GET/HEAD/POST/PUT/DELETE/OPTIONS
+        │       └─► Response status validated (100-599 range)
         │
-        ├─► Clears _pingOverride
+        ├─► Clears _pingOverride back to null
         │
-        ├─► Saves ping result to ryujin_ping_history
+        ├─► Saves result to ryujin_ping_history in storage
         │
         └─► broadcastStateChange() → UI shows latency + timestamp
 ```
 
 ### Tab Routing
+
 ```
-Tab loads / activates
+Tab loads or navigates
        │
        ▼
 proxy.onRequest fires for each request
        │
        ▼
 Check order:
-  1. Is activeProxyId set?
-  2. Is this a ping override URL?
-  3. Is URL blacklisted?
-  4. Is whitelist enabled and URL not on it?
-  5. Is routeAllTabs=false AND tab not in tabRouting map?
-  6. Found proxy? → return socks config
+  1. Is this a ping override URL? → route through override proxy
+  2. Is activeProxyId set? → continue, else direct
+  3. Is URL blacklisted (if enabled)? → direct
+  4. Is whitelist enabled and URL not on it? → direct
+  5. routeAllTabs=false AND tab not in tabRouting Map? → direct
+  6. Found proxy? → return SOCKS5 config
 ```
 
 ### Data Tracking
+
 ```
-Request sent
+Request sent (onBeforeRequest)
        │
        ▼
-webRequest.onBeforeRequest (blocking)
-       │
-       ▼
-shouldTrackRequest(details) → tabId > 0 && (routeAllTabs || tabRouting)
+shouldTrackRequest(details) → tabId > 0 AND (routeAllTabs OR tab in tabRouting)
        │
        ▼
 trackDataUsage(tabId, requestBody.length, 'sent')
-
-
-Response received
        │
        ▼
-webRequest.onHeadersReceived
+dataUsage Map[activeProxyId].sent += bytes
+
+Response received (onHeadersReceived)
        │
        ▼
 shouldTrackRequest(details) → same check
        │
        ▼
-Reads Content-Length header
+Reads Content-Length header value
        │
        ▼
 trackDataUsage(tabId, contentLength, 'received')
-
-
-dataUsage Map in memory:
-  activeProxyId → { sent: number, received: number }
-
-Debounced persistence to ryujin_data_usage in storage
-UI receives updated state via broadcastStateChange()
-```
-
-### URL Filtering (in proxy.onRequest)
-```
-Request enters proxy.onRequest listener
        │
        ▼
-checkUrlFilters(url) in background.js
+dataUsage Map[activeProxyId].received += bytes
+
+Persistence: Immediate save via browser.storage.local.set
+State broadcast: broadcastStateChange() updates all UI frames
+```
+
+### URL Filtering (in checkUrlFilters)
+
+```
+Request URL enters checkUrlFilters()
        │
-       ├─► blacklistEnabled?
-       │     ├─► regexBlacklist match? → return { cancel: true } (route direct)
-       │     └─► blacklist domain match? → return { cancel: true } (route direct)
+       ▼
+  ┌─────────────────────────────────────┐
+  │ blacklistEnabled?                    │
+  │  ├─ regexBlacklist match? → cancel  │
+  │  └─ blacklist domain match? → cancel│
+  └─────────────────────────────────────┘
+       │ Not blocked
+       ▼
+  ┌─────────────────────────────────────┐
+  │ whitelistEnabled?                    │
+  │  ├─ regexWhitelist match? → allow   │
+  │  ├─ whitelist has entries AND URL   │
+  │  │  not on any? → cancel            │
+  │  └─ on whitelist? → allow           │
+  └─────────────────────────────────────┘
        │
-       ├─► whitelistEnabled?
-       │     ├─► regexWhitelist match? → allow (continue routing)
-       │     ├─► whitelist has entries AND URL not on any? → return { cancel: true }
-       │     └─► on whitelist? → allow
-       │
-       └─► return { cancel: false } → continue normal routing
+       ▼
+  Return { cancel: false } → continue normal routing
 ```
 
 ### Logging System
+
 ```
 Any component calls addLog(level, message)
        │
        ▼
 background.js: addLog()
        │
-       ├─► Creates log entry { level, message, timestamp }
-       ├─► Appends to in-memory logs[] (capped at 500)
+       ├─► Creates entry { level, message, timestamp }
+       ├─► Appends to in-memory logs[] (capped at 500, FIFO)
        ├─► Persists to ryujin_logs in storage
-       └─► Broadcasts LOG_ENTRY to all UI frames
+       ├─► Broadcasts LOG_ENTRY to all UI frames
        │
        ▼
-Options page receives LOG_ENTRY → addLog() → renderLogs()
+Options page receives LOG_ENTRY → addLog() → prepend to state.logs → renderLogs()
 Filtered by level: all | info | success | warning | error
 ```
 
@@ -460,7 +538,8 @@ Filtered by level: all | info | success | warning | error
       "message": "Background service initialized",
       "timestamp": 1719580800000
     }
-  ]
+  ],
+  "ryujin_url_filters": { "...": "..." }
 }
 ```
 
@@ -472,9 +551,11 @@ Filtered by level: all | info | success | warning | error
 | `tabs` | Tab querying, favicon, titles for routing UI |
 | `storage` | Persist all settings, proxies, data usage, logs |
 | `webRequest` | Data tracking (onBeforeRequest, onHeadersReceived) |
-| `webRequestBlocking` | Synchronous request inspection for tracking |
+| `webRequestBlocking` | Synchronous request inspection with `requestBody` |
 | `<all_urls>` | Apply proxy to all websites, intercept all requests |
-| `webNavigation` | Detect navigation events for tab tracking (listed in manifest permissions, not optional) |
+| `webNavigation` | Listed in manifest permissions (used for navigation events) |
+
+**Note:** `webNavigation` is declared in the main `permissions` array. The manifest also lists it in `optional_permissions` but this is redundant — it is always granted.
 
 ## Build System
 
@@ -485,18 +566,20 @@ Filtered by level: all | info | success | warning | error
 # Production (creates dist/ryujin-proxy-v{version}.xpi and .zip)
 ./build.sh --prod
 
-# Lint manifest
+# Lint manifest with web-ext
 npm run lint
 ```
 
-**Build Process:**
-1. Detects version from `manifest.json`
-2. Development: prints instructions for temporary add-on loading
-3. Production:
+**Build Process (`build.sh`):**
+1. Reads `name` and `version` from `manifest.json`
+2. **Development mode:** prints instructions for loading as Temporary Add-on in `about:debugging`
+3. **Production mode:**
    - Creates temp directory with only extension files (`manifest.json`, `src/`, `assets/`, `CHANGELOG.md`)
-   - Runs `web-ext build` on clean source
-   - Renames output to `ryujin-proxy-v{version}.xpi` and copies as `.zip`
+   - Runs `npx web-ext build --source-dir=<temp> --artifacts-dir=web-ext-artifacts`
+   - Renames output `.zip` to `ryujin-proxy-v{version}.xpi`
+   - Copies as `.zip` with the same name
    - Places both in `dist/`
+   - Cleans up temp directory
 
 ## Design System
 
@@ -564,22 +647,6 @@ npm run lint
 | `STATE_CHANGED` | Full state object |
 | `LOG_ENTRY` | `{ level, message }` |
 
-## Events (Background → UI)
-
-| Type | Payload | Description |
-|------|---------|-------------|
-| `STATE_CHANGED` | `{ state: {...} }` | Full state broadcast after any mutation |
-| `LOG_ENTRY` | `{ level, message }` | Real-time log entry for options page |
-
-## Known Code Issues
-
-### Duplicate `_pingOverride` Declaration (background.js:37-38)
-```javascript
-let _pingOverride = null;
-let _pingOverride = null;  // Duplicate — second declaration shadows first
-```
-The `_pingOverride` variable is declared twice. While JavaScript allows this in non-strict mode (the second `let` would throw in strict mode), the actual code uses an IIFE-less top-level scope. This is a no-op but should be cleaned up.
-
 ## Testing Checklist
 
 ### Proxy Management
@@ -603,7 +670,7 @@ The `_pingOverride` variable is declared twice. While JavaScript allows this in 
 ### URL Filtering
 - [ ] Whitelist domain → bypasses proxy
 - [ ] Blacklist domain → blocks completely
-- [ ] Regex filters → match correctly (test with tester)
+- [ ] Regex filters → match correctly (test with built-in tester)
 - [ ] Whitelist/blacklist enable toggles work independently
 - [ ] Filters persist after browser restart
 
@@ -611,10 +678,10 @@ The `_pingOverride` variable is declared twice. While JavaScript allows this in 
 - [ ] Ping button → shows spinner during test
 - [ ] Successful ping → shows latency in popup with green text
 - [ ] Failed ping → shows error message with red text
-- [ ] TCP method works
-- [ ] HTTP method validates expected status code
+- [ ] HTTP methods (GET/HEAD/POST/PUT/DELETE/OPTIONS) work
+- [ ] Expected status code validation works
 - [ ] Ping does not disrupt active proxy connection
-- [ ] Ping history persists and displays timestamp
+- [ ] Ping history persists and displays timestamp on hover
 
 ### Settings Persistence
 - [ ] All settings survive browser restart
@@ -633,15 +700,15 @@ The `_pingOverride` variable is declared twice. While JavaScript allows this in 
 - [ ] Scrollbar styling in proxy list and tab list
 
 ### Changelog
-- [ ] Changelog page renders all versions with grouped changes
-- [ ] Version links to GitHub releases
-- [ ] Back to Settings link works
+- [ ] Changelog modal renders all versions with grouped changes
+- [ ] Version links visible
+- [ ] Back to Settings works (close modal)
 
 ## Troubleshooting
 
 ### Proxy not connecting
 1. Verify host:port reachable (use ping button)
-2. Check Firefox proxy settings not conflicting (about:preferences#general)
+2. Check Firefox proxy settings not conflicting (`about:preferences#general`)
 3. Check `browser.proxy.onError` in background console
 
 ### Data not tracking
@@ -650,15 +717,15 @@ The `_pingOverride` variable is declared twice. While JavaScript allows this in 
 3. Verify tab is actually routed (routeAllTabs or per-tab toggle)
 
 ### URL filters not working
-1. Check regex syntax in the tester
-2. Verify filter type (whitelist vs blacklist)
+1. Check regex syntax in the built-in tester
+2. Verify filter type (whitelist vs blacklist vs regex variants)
 3. Ensure the corresponding enable toggle is on
 
 ### Ping test failing
 1. Verify proxy is reachable from your network
 2. Check expected HTTP status matches what the endpoint returns
-3. Try TCP method instead of HTTP
-4. Ensure proxy supports the ping URL
+3. Ensure proxy supports the ping URL
+4. Try a different HTTP method (e.g., HEAD instead of GET)
 
 ### Icon not showing in about:addons
 - Manifest `icons` object must reference existing files
@@ -667,7 +734,7 @@ The `_pingOverride` variable is declared twice. While JavaScript allows this in 
 
 ### Extension not loading
 - Firefox 91.1.0+ required (strict_min_version)
-- Manifest V2 must be enabled in about:config (`extensions.manifestV2.enabled`)
+- Manifest V2 must be enabled in `about:config` (`extensions.manifestV2.enabled`)
 - Check browser console for syntax errors
 
 ---
