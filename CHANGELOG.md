@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.10] - 2026-06-30
+
+### Added
+- HTTP method dropdown for ping tests (GET, HEAD, POST, PUT, DELETE, OPTIONS) — replaces the old TCP/HTTP choice
+
+### Fixed
+- Ping test no longer opens a visible tab — runs silently in the background
+- Ping test now properly sends proxy credentials (username/password) when testing
+- Completely rewrote the ping logic — simpler, more reliable, no race conditions
+
+### Changed
+- Default ping URL updated to HTTPS (https://www.google.com/generate_204)
+- Default ping method changed to GET
+
+## [0.0.9] - 2026-06-30
+
+### Added
+- Expected HTTP Status setting in options (default: 204) — customize which response code means success
+- Extension icon (favicon) now shows on all extension pages
+
+### Fixed
+- Ping test now properly routes through the selected proxy with correct credentials
+- Ping test validates the expected HTTP status code (default 204)
+- Fixed ping test timeouts when proxy was unreachable
+- Fixed ping test not using proxy credentials for authenticated proxies
+
+### Changed
+- Default ping URL restored to http://www.google.com/generate_204 (returns 204 No Content)
+- Ping test now validates exact status code instead of just checking if response is OK
+
 ## [0.0.8] - 2026-06-29
 
 ### Fixed

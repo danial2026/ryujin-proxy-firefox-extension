@@ -544,7 +544,7 @@
 
   elements.viewChangelog.addEventListener('click', (e) => {
     e.preventDefault();
-    window.open(browser.runtime.getURL('src/options/changelog.html'), '_blank', 'noopener,noreferrer');
+    elements.changelogModal.classList.add('active');
   });
 
   elements.viewLicense.addEventListener('click', (e) => {
