@@ -9,7 +9,10 @@
 
 **Ryujin Proxy** — A minimal, privacy-focused SOCKS5 proxy manager for Firefox.
 
-[![GitHub](https://img.shields.io/badge/GitHub-danial2026%2Fryujin--proxy--firefox--extension-181717?logo=github)](https://github.com/danial2026/ryujin-proxy-firefox-extension)
+[![GitHub](https://img.shields.io/badge/GitHub-danial2026%2Fryujin--proxy--firefox--extension-000000?logo=github)](https://github.com/danial2026/ryujin-proxy-firefox-extension)
+[![GitHub Release](https://img.shields.io/github/v/release/danial2026/ryujin-proxy-firefox-extension?color=000000&logo=github&logoColor=white)](https://github.com/danial2026/ryujin-proxy-firefox-extension/releases)
+[![Mozilla Add-on](https://img.shields.io/badge/Firefox-Add--on-FF7139?logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/ryujin-proxy/)
+[![Mozilla Add-on Version](https://img.shields.io/amo/v/ryujin-proxy?color=00FF88&logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/en-US/firefox/addon/ryujin-proxy/)
 
 ---
 
